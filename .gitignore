@@ -1,0 +1,6 @@
+
+ShakraDrv/.vs/
+ShakraDrv/Debug/
+ShakraDrv/Release/
+*.vcxproj.filters
+*.vcxproj.user
