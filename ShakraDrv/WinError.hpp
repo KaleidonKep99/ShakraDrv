@@ -14,7 +14,7 @@ using namespace std;
 
 class ErrorSystem {
 public:
-	void Log(const wchar_t*, const wchar_t*);
-	void ThrowError(const wchar_t*, const wchar_t*, bool);
+	void Log(const wchar_t*, const wchar_t*, const wchar_t*, const wchar_t*);
+	void ThrowError(const wchar_t*, const wchar_t*, const wchar_t*, const wchar_t*, bool);
 	void ThrowFatalError(const wchar_t*);
 };

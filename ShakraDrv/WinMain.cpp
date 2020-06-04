@@ -9,51 +9,117 @@ This file is useful only if you want to compile the driver under Windows, it's n
 #include "WinError.hpp"
 
 static WinDriver::DriverComponent DriverComponent;
+static WinDriver::DriverMask DriverMask;
 static ErrorSystem DrvErr;
 
 BOOL WINAPI DllMain(HINSTANCE HinstanceDLL, DWORD fdwReason, LPVOID lpvR) {
 	switch (fdwReason) {
 	case DLL_PROCESS_ATTACH:
+		if (!DisableThreadLibraryCalls(HinstanceDLL))
+			return FALSE;
 
 		break;
 
 	case DLL_PROCESS_DETACH:
-		DriverComponent.CloseDriver();
-		DriverComponent.UnsetDriverHandle();
+		break;
+
+	case DLL_THREAD_ATTACH:
+	case DLL_THREAD_DETACH:
 		break;
 	}
+
+	return TRUE;
 }
 
-LONG WINAPI DriverProc(DWORD DriverIdentifier, HDRVR HDRVR, UINT Message, LONG Param1, LONG Param2) {
+LONG WINAPI DriverProc(DWORD DriverIdentifier, HDRVR DriverHandle, UINT Message, LONG Param1, LONG Param2) {
 	switch (Message) {
-	case DRV_OPEN:
-		return DriverComponent.SetDriverHandle(HDRVR) ? DRVCNF_OK : DRVCNF_CANCEL;
-	case DRV_CLOSE:
-		return DriverComponent.UnsetDriverHandle() ? DRVCNF_OK : DRVCNF_CANCEL;
-	case DRV_CONFIGURE:
-	case DRV_QUERYCONFIGURE:
 	case DRV_LOAD:
+		return DriverComponent.SetDriverHandle(DriverHandle);
 	case DRV_FREE:
-		return DRV_OK;
-	default:
-		return DefDriverProc(DriverIdentifier, HDRVR, Message, Param1, Param2);
+		return DriverComponent.UnsetDriverHandle();
+
+	case DRV_OPEN:
+	case DRV_CLOSE:
+		return DRVCNF_OK;
+
+	case DRV_QUERYCONFIGURE:
+		return DRVCNF_OK;
+
+	case DRV_ENABLE:
+	case DRV_DISABLE:
+		return DRVCNF_OK;
+
+	case DRV_INSTALL:
+		return DRVCNF_OK;
+
+	case DRV_REMOVE:
+		return DRVCNF_OK;
 	}
+
+	return DefDriverProc(DriverIdentifier, DriverHandle, Message, Param1, Param2);
 }
 
 MMRESULT modMessage(UINT DeviceIdentifier, UINT Message, DWORD_PTR DriverAddress, DWORD_PTR Param1, DWORD_PTR Param2) {
 	switch (Message) {
+	case MODM_DATA:
+		return MMSYSERR_NOERROR;
+
+	case MODM_LONGDATA:
+		DriverComponent.CallbackFunction(MM_MOM_DONE, Param1, 0);
+		return MMSYSERR_NOERROR;
+
+	case MODM_PREPARE:
+		DriverComponent.CallbackFunction(MM_MOM_DONE, Param1, 0);
+		return MMSYSERR_NOERROR;
+
+	case MODM_UNPREPARE:
+		DriverComponent.CallbackFunction(MM_MOM_DONE, Param1, 0);
+		return MMSYSERR_NOERROR;
+
+	case MODM_RESET:
+	case MODM_GETVOLUME:
+	case MODM_SETVOLUME:
+		return MMSYSERR_NOERROR;
+
 	case MODM_OPEN:
 		// Open the driver, and if everything goes fine, inform the app through a callback
 		if (DriverComponent.OpenDriver((LPMIDIOPENDESC)Param1, (DWORD)Param2, DriverAddress)) {
-			DriverComponent.CallbackFunction(MOM_OPEN, 0, 0);
+			// Initialize BASS
+
+			DriverComponent.CallbackFunction(MM_MOM_OPEN, 0, 0);
+
+			DLOG(DrvErr, L"The driver has been opened.");
 			return MMSYSERR_NOERROR;
 		}
 
 		// Something went wrong, the driver failed to open
-		DrvErr.ThrowError(F, L"Failed to open driver.", false);
-		return MMSYSERR_NOTENABLED;
+		DERROR(DrvErr, L"Failed to open driver.", false);
+
+		return MIDIERR_NOTREADY;
+
+	case MODM_CLOSE:
+		if (DriverComponent.CloseDriver()) {
+			DriverComponent.CallbackFunction(MM_MOM_CLOSE, 0, 0);
+
+			DLOG(DrvErr, L"The driver has been closed.");
+			return MMSYSERR_NOERROR;
+		}
+
+		return MMSYSERR_ERROR;
+
+	case MODM_GETNUMDEVS:
+		return 0x1;
+
+	case MODM_GETDEVCAPS:
+		return DriverMask.GiveCaps((PVOID)Param1, (DWORD)Param2);
+
+	case MODM_CACHEPATCHES:
+	case MODM_CACHEDRUMPATCHES:
+	case DRV_QUERYDEVICEINTERFACESIZE:
+	case DRV_QUERYDEVICEINTERFACE:
+		return MMSYSERR_NOERROR;
 
 	default:
-		return MMSYSERR_NOERROR;
+		return MMSYSERR_ERROR;
 	}
 }

@@ -7,24 +7,31 @@ This file is useful only if you want to compile the driver under Windows, it's n
 
 #ifdef _WIN32
 
+#define BUFSIZE		2048
+#define SZBUFSIZE	sizeof(wchar_t) * BUFSIZE
+
 #include "WinError.hpp"
 
-void ErrorSystem::Log(const wchar_t* Position, const wchar_t* Message) {
+void ErrorSystem::Log(const wchar_t* Message, const wchar_t* Position, const wchar_t* File, const wchar_t* Line) {
 	wchar_t* Buf;
 
-	Buf = (wchar_t*)malloc(sizeof(wchar_t) * 2048);
-	swprintf_s(Buf, sizeof(Buf), L"%s: %s", Position, Message);
+	Buf = (wchar_t*)malloc(SZBUFSIZE);
+	swprintf_s(Buf, BUFSIZE, L"DEBUG MSG FROM %s.\n\nFile: %s\nLine: %s\n\nMessage: %s", Position, File, Line, Message);
 
 	OutputDebugString(Buf);
+
+#ifdef _DEBUG
+	MessageBox(NULL, Buf, L"Shakra - Debug message", MB_OK | MB_SYSTEMMODAL | MB_ICONWARNING);
+#endif
 
 	free(Buf);
 }
 
-void ErrorSystem::ThrowError(const wchar_t* Position, const wchar_t* Error, bool IsSeriousError) {
+void ErrorSystem::ThrowError(const wchar_t* Error, const wchar_t* Position, const wchar_t* File, const wchar_t* Line, bool IsSeriousError) {
 	wchar_t* Buf;
 
-	Buf = (wchar_t*)malloc(sizeof(wchar_t) * 2048);
-	swprintf_s(Buf, sizeof(Buf), L"An error has occured at \"%s\"!\n\nError: %s", Position, Error);
+	Buf = (wchar_t*)malloc(SZBUFSIZE);
+	swprintf_s(Buf, BUFSIZE, L"An error has occured in the \"%s\" function!\n\nFile: %s\nLine: %s\n\nError: %s", Position, File, Line, Error);
 
 	MessageBox(NULL, Buf, L"Shakra - Error", IsSeriousError ? MB_ICONERROR : MB_ICONWARNING | MB_OK | MB_SYSTEMMODAL);
 
@@ -34,8 +41,8 @@ void ErrorSystem::ThrowError(const wchar_t* Position, const wchar_t* Error, bool
 void ErrorSystem::ThrowFatalError(const wchar_t* Error) {
 	wchar_t* Buf;
 
-	Buf = (wchar_t*)malloc(sizeof(wchar_t) * 2048);
-	swprintf_s(Buf, sizeof(Buf), L"A fatal error has occured from which the driver is unable to recover!\n\nError: %s", Error);
+	Buf = (wchar_t*)malloc(SZBUFSIZE);
+	swprintf_s(Buf, BUFSIZE, L"A fatal error has occured from which the driver is unable to recover!\n\nError: %s", Error);
 
 	MessageBox(NULL, Buf, L"Shakra - FATAL ERROR", MB_ICONERROR | MB_OK | MB_SYSTEMMODAL);
 
