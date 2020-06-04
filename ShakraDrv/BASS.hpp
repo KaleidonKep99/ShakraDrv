@@ -33,10 +33,10 @@ This file is required for both Windows and Linux.
 
 class BASS {
 private:
-	wchar_t* CustomDir;
-	int OutputID;
-	int AudioFreq;
-	int Flgs;
+	wchar_t CustomDir[MAX_PATH] = { 0 };
+	int OutputID = 0;
+	int AudioFreq = 0;
+	int Flgs = NULL;
 	bool _Fail = false;
 
 #ifdef _WIN32
@@ -54,13 +54,15 @@ private:
 
 public:
 	// Only used by apps that are bundled with the driver
-	bool SetCustomLoadDir(wchar_t*, size_t);
-
 	bool Fail() const { return _Fail; }
+
+	// Only used by apps that are bundled with the driver
+	bool SetCustomLoadDir(wchar_t*, size_t);
 
 	// Init
 	BASS(int, int);
 	BASS(int, int, int);
+	~BASS();
 };
 
 #endif

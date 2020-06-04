@@ -26,7 +26,18 @@ BASS::BASS(int OutputIdentifier, int AudioFrequency, int Flags) {
 		return;
 	}
 
-	BASSErr.Log(F, L"BASS is ready.");
+	BASSErr.Log(F, L"BASS is ready for incoming streams.");
+}
+
+BASS::~BASS() {
+	if (!BASS_Free()) {
+		BASSErr.ThrowError(F, L"BASS encountered an error while trying to free the stream.", false);
+
+		_Fail = true;
+		return;
+	}
+
+	BASSErr.Log(F, L"BASS has been shutdown and is ready to be freed.");
 }
 
 bool BASS::SetCustomLoadDir(wchar_t* Directory, size_t DirectoryBuf) {
@@ -40,14 +51,13 @@ bool BASS::SetCustomLoadDir(wchar_t* Directory, size_t DirectoryBuf) {
 		return false;
 	}
 
-	if (CustomDir != nullptr) {
+	if (wcslen(CustomDir) != 0) {
 		BASSErr.Log(F, L"There's already a dir stored in memory, it will be overwrited...");
 		free(CustomDir);
 	}
 
-	BASSErr.Log(F, L"Allocating memory for custom dir...");
-	CustomDir = (wchar_t*)calloc(MAX_PATH, sizeof(wchar_t));
 	if (CustomDir != nullptr) {
+		memset(CustomDir, 0, sizeof(wchar_t) * MAX_PATH);
 		wcscpy_s(CustomDir, sizeof(wchar_t) * MAX_PATH, Directory);
 
 		BASSErr.Log(F, L"Custom dir stored successfully into memory.");
@@ -111,5 +121,30 @@ bool BASS::LoadLib() {
 }
 
 bool BASS::FreeLib() {
+#ifdef _WIN32
 
+	if (BASS_Start() != BASS_ERROR_INIT) {
+		BASSErr.ThrowError(F, L"You can't unload BASS while it's active!", false);
+		return false;
+	}
+
+	if (BASSLib != nullptr) {
+		if (!FreeLibrary(BASSLib)) {
+			BASSErr.ThrowFatalError(L"The driver failed to unload BASS.DLL.\n\nThis is not supposed to happen!");
+			return false;
+		}
+	}
+	else BASSErr.Log(F, L"BASS isn't loaded.");
+
+	return true;
+
+#elif __linux__
+
+	// stub
+
+#elif __APPLE__
+
+	// stub
+
+#endif
 }

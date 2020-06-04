@@ -11,6 +11,19 @@ This file is useful only if you want to compile the driver under Windows, it's n
 static WinDriver::DriverComponent DriverComponent;
 static ErrorSystem DrvErr;
 
+BOOL WINAPI DllMain(HINSTANCE HinstanceDLL, DWORD fdwReason, LPVOID lpvR) {
+	switch (fdwReason) {
+	case DLL_PROCESS_ATTACH:
+
+		break;
+
+	case DLL_PROCESS_DETACH:
+		DriverComponent.CloseDriver();
+		DriverComponent.UnsetDriverHandle();
+		break;
+	}
+}
+
 LONG WINAPI DriverProc(DWORD DriverIdentifier, HDRVR HDRVR, UINT Message, LONG Param1, LONG Param2) {
 	switch (Message) {
 	case DRV_OPEN:
