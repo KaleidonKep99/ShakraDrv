@@ -7,9 +7,7 @@ This file is useful only if you want to compile the driver under Windows, it's n
 
 #ifdef _WIN32
 
-#include "WinDriver.h"
-
-#define F _T(__FUNCTION__)
+#include "WinDriver.hpp"
 
 namespace WinDriver {
 	bool DriverMask::ChangeName(const wchar_t* NewName) {
@@ -22,7 +20,7 @@ namespace WinDriver {
 
 			MaskErr.ThrowError(F, L"The name is too long!", false);
 		}
-		else MaskErr.ThrowError(F, L"The name is too long!", false);
+		else MaskErr.ThrowError(F, L"Something went wrong while trying to access the new name. Memory corruption?", true);
 
 		return false;
 	}
@@ -43,17 +41,25 @@ namespace WinDriver {
 		MIDIOUTCAPSW* CapsW;
 		MIDIOUTCAPS2A* Caps2A;
 		MIDIOUTCAPS2W* Caps2W;
+		size_t WCSTSRetVal;
 
+		// Why would this happen? Stupid MIDI app dev smh
 		if (CapsPointer == nullptr)
 		{
-			MaskErr.ThrowError(F, L"A null pointer has been passed to the function.", false);
+			MaskErr.ThrowError(F, L"A null pointer has been passed to the function. The driver can't share its info with the application.", false);
 			return MMSYSERR_INVALPARAM;
 		}
 
+		if (CapsSize == 0) {
+			MaskErr.ThrowError(F, L"CapsSize has a value of 0, how is the driver supposed to determine the subtype of the struct?", false);
+			return MMSYSERR_INVALPARAM;
+		}
+
+		// I have to support all this s**t or else it won't work in some apps smh
 		switch (CapsSize) {
 		case (sizeof(MIDIOUTCAPSA)):
 			CapsA = (LPMIDIOUTCAPSA)CapsPointer;
-			wcstombs(CapsA->szPname, this->Name.c_str(), MAXPNAMELEN);
+			wcstombs_s(&WCSTSRetVal, CapsA->szPname, sizeof(CapsA->szPname), this->Name.c_str(), MAXPNAMELEN);
 			CapsA->dwSupport = this->Support;
 			CapsA->wChannelMask = 0xFFFF;
 			CapsA->wMid = this->ManufacturerID;
@@ -66,7 +72,7 @@ namespace WinDriver {
 
 		case (sizeof(MIDIOUTCAPSW)):
 			CapsW = (LPMIDIOUTCAPSW)CapsPointer;
-			wcsncpy(CapsW->szPname, this->Name.c_str(), MAXPNAMELEN);
+			wcsncpy_s(CapsW->szPname, this->Name.c_str(), MAXPNAMELEN);
 			CapsW->dwSupport = this->Support;
 			CapsW->wChannelMask = 0xFFFF;
 			CapsW->wMid = this->ManufacturerID;
@@ -79,7 +85,7 @@ namespace WinDriver {
 
 		case (sizeof(MIDIOUTCAPS2A)):
 			Caps2A = (LPMIDIOUTCAPS2A)CapsPointer;
-			wcstombs(Caps2A->szPname, this->Name.c_str(), MAXPNAMELEN);
+			wcstombs_s(&WCSTSRetVal, Caps2A->szPname, sizeof(CapsA->szPname), this->Name.c_str(), MAXPNAMELEN);
 			Caps2A->dwSupport = this->Support;
 			Caps2A->wChannelMask = 0xFFFF;
 			Caps2A->wMid = this->ManufacturerID;
@@ -92,7 +98,7 @@ namespace WinDriver {
 
 		case (sizeof(MIDIOUTCAPS2W)):
 			Caps2W = (LPMIDIOUTCAPS2W)CapsPointer;
-			wcsncpy(Caps2W->szPname, this->Name.c_str(), MAXPNAMELEN);
+			wcsncpy_s(Caps2W->szPname, this->Name.c_str(), MAXPNAMELEN);
 			Caps2W->dwSupport = this->Support;
 			Caps2W->wChannelMask = 0xFFFF;
 			Caps2W->wMid = this->ManufacturerID;
@@ -108,14 +114,26 @@ namespace WinDriver {
 	}
 
 	void DriverComponent::CallbackFunction(DWORD Message, DWORD Arg1, DWORD Arg2) {
-		int ReturnMessage = NULL;
+		WMMC Callback = nullptr;
+		int ReturnMessage = 0;
 
 		switch (this->CallbackMode & CALLBACK_TYPEMASK) {
 		case CALLBACK_NULL:		// You're not supposed to call the function with CALLBACK_NULL lol
-			DrvErr.Warn(F, L"The application called the function with CALLBACK_NULL, unexpected behavior.");
+			DrvErr.Log(F, L"The application called the function with CALLBACK_NULL, unexpected behavior.");
 			break;
 		case CALLBACK_FUNCTION:	// Use a custom function to notify the app
-			(*(WMMC)(this->Callback))((HMIDIOUT)(this->WMMHandle), Message, this->Instance, Arg1, Arg2);
+			// Prepare the custom callback
+			Callback = (*(WMMC)(this->Callback));
+
+			// It doesn't exist! Not good!
+			if (Callback == nullptr)
+			{
+				DrvErr.ThrowFatalError(L"The callback function became not valid. This is dangerous and shouldn't happen.");
+				return;
+			}
+
+			// It's alive, use the app's custom function to send the callback
+			Callback((HMIDIOUT)(this->WMMHandle), Message, this->Instance, Arg1, Arg2);
 			break;
 		case CALLBACK_EVENT:	// Set an event to notify the app
 			ReturnMessage = SetEvent((HANDLE)(this->Callback));
@@ -138,9 +156,15 @@ namespace WinDriver {
 			return false;
 		}
 
+		// We already have the same pointer in memory.
+		if (this->DrvHandle == Handle) {
+			DrvErr.Log(F, L"We already have the handle stored in memory. The app has Alzheimer I guess?");
+			return true;
+		}
+
 		// A pointer is already stored in the variable, UnSetDriverHandle hasn't been called
 		if (this->DrvHandle != nullptr) {
-			DrvErr.ThrowError(F, L"DrvHandle has already been set and not freed.", false);
+			DrvErr.ThrowError(F, L"DrvHandle has been set in a previous call and not freed.", false);
 			return false;
 		}
 
@@ -152,7 +176,7 @@ namespace WinDriver {
 	bool DriverComponent::UnsetDriverHandle() {
 		// Warn through stdout if the app is trying to free the driver twice
 		if (this->DrvHandle == nullptr)
-			DrvErr.Warn(L"The application called UnsetDriverHandle even though there's no handle set. Bad design?");
+			DrvErr.Log(F, L"The application called UnsetDriverHandle even though there's no handle set. Bad design?");
 
 		// Free the driver by setting the local variable to nullptr, then return true
 		this->DrvHandle = nullptr;
@@ -160,12 +184,13 @@ namespace WinDriver {
 	}
 
 	bool DriverComponent::OpenDriver(MIDIOPENDESC* OpInfStruct, DWORD CallbackMode, DWORD_PTR CookedPlayerAddress) {
-		if (OpInfStruct->hMidi != nullptr)
-			this->WMMHandle = OpInfStruct->hMidi;
-		else {
+		if (OpInfStruct->hMidi == nullptr) {
 			DrvErr.ThrowError(F, L"No valid HMIDI pointer has been specified.", false);
 			return false;
 		}
+
+		// Save the pointer's address to memory
+		this->WMMHandle = OpInfStruct->hMidi;
 
 		// Check if the app wants the driver to do callbacks
 		if (CallbackMode != CALLBACK_NULL) {

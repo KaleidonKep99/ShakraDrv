@@ -12,11 +12,9 @@ This file is useful only if you want to compile the driver under Windows, it's n
 
 using namespace std;
 
-namespace WinDriver {
-	class ErrorSystem {
-	public:
-		void Warn(const wchar_t*, const wchar_t*);
-		void ThrowError(const wchar_t*, const wchar_t*, bool);
-		void ThrowFatalError(const wchar_t*);
-	};
-}
+class ErrorSystem {
+public:
+	void Log(const wchar_t*, const wchar_t*);
+	void ThrowError(const wchar_t*, const wchar_t*, bool);
+	void ThrowFatalError(const wchar_t*);
+};

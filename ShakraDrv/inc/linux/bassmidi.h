@@ -20,8 +20,6 @@ extern "C" {
 
 #ifndef BASSMIDIDEF
 #define BASSMIDIDEF(f) WINAPI f
-#else
-#define NOBASSMIDIOVERLOADS
 #endif
 
 typedef DWORD HSOUNDFONT;	// soundfont handle
@@ -319,7 +317,6 @@ BOOL BASSMIDIDEF(BASS_MIDI_InStop)(DWORD device);
 #ifdef __cplusplus
 }
 
-#ifndef NOBASSMIDIOVERLOADS
 static inline BOOL BASS_MIDI_StreamSetFonts(HSTREAM handle, const BASS_MIDI_FONTEX *fonts, DWORD count)
 {
 	return BASS_MIDI_StreamSetFonts(handle, (const void*)fonts, count|BASS_MIDI_FONT_EX);
@@ -355,7 +352,6 @@ static inline BOOL BASS_MIDI_FontUnpack(HSOUNDFONT handle, const WCHAR *outfile,
 {
 	return BASS_MIDI_FontUnpack(handle, (const void*)outfile, flags|BASS_UNICODE);
 }
-#endif
 #endif
 #endif
 

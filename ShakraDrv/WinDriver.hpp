@@ -8,14 +8,16 @@ This file is useful only if you want to compile the driver under Windows, it's n
 #pragma once
 
 #ifndef WINDRIVER_H
+
 #define WINDRIVER_H
+#define F _T(__FUNCTION__)
 
 #include <Windows.h>
 #include <mmddk.h>
 #include <assert.h>
 #include <tchar.h>
 #include <string>
-#include "WinError.h"
+#include "WinError.hpp"
 
 using namespace std;
 
@@ -38,6 +40,18 @@ namespace WinDriver {
 		bool ChangeName(const wchar_t*);
 		bool ChangeSettings(short, short, short, short);
 		unsigned long GiveCaps(void*, DWORD);
+	};
+
+	class DriverSettings {
+	private:
+
+	public:
+
+	};
+
+	class Blacklist {
+	private:
+
 	};
 
 	class DriverComponent {
@@ -63,11 +77,6 @@ namespace WinDriver {
 
 		// Callbacks
 		void CallbackFunction(DWORD, DWORD, DWORD);
-	};
-
-	class Blacklist {
-	private:
-
 	};
 }
 
