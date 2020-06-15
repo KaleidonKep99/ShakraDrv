@@ -5,41 +5,54 @@ This .cpp file contains the required code to run the driver.
 This file is required for both Windows and Linux.
 */
 
-#include "BASS.hpp"
+#include "BASSLib.hpp"
 
 // Quick log
+
+BASS::BASS() {
+	// Nothing.
+}
 
 BASS::BASS(int OutputIdentifier, int Flags) {
 	BASS(OutputIdentifier, 0, Flags);
 }
 
 BASS::BASS(int OutputIdentifier, int AudioFrequency, int Flags) {
-	if (OutputID == 0 && AudioFreq == 0)
-		BLOG(L"No audio frequency specified with NULL output. Defaulting to 44.1kHz.");
+	if (LoadLib()) {
+		if (this->OutputID == 0 && this->AudioFreq == 0)
+			BLOG(L"No audio frequency specified with NULL output. Defaulting to 44.1kHz.");
 
-	OutputID = OutputIdentifier;
-	AudioFreq = AudioFrequency ? AudioFrequency : 44100;
-	Flgs = Flags;
+		this->OutputID = OutputIdentifier;
+		this->AudioFreq = AudioFrequency ? AudioFrequency : 44100;
+		this->Flgs = Flags;
 
-	if (!BASS_Init(OutputID, AudioFreq, Flgs, nullptr, nullptr)) {
-		BERROR(L"An error has occured during the initialization of BASS.", false);
+		if (!BASS_Init(OutputID, AudioFreq, Flgs, nullptr, nullptr)) {
+			BERROR(L"An error has occured during the initialization of BASS.", false);
 
-		_Fail = true;
+			this->_Fail = true;
+			return;
+		}
+
+		this->BASSErr.Log(L"BASS is ready for incoming streams.", FU, FI, LI);
 		return;
 	}
 
-	BASSErr.Log(L"BASS is ready for incoming streams.", FU, FI, LI);
+	BERROR(L"Shakra failed to load BASS.DLL.", false);
+	this->_Fail = true;
+	return;
 }
 
 BASS::~BASS() {
 	if (!BASS_Free()) {
 		BERROR(L"BASS encountered an error while trying to free the stream.", false);
 
-		_Fail = true;
+		this->_Fail = true;
 		return;
 	}
 
-	BASSErr.Log(L"BASS has been shutdown and is ready to be freed.", FU, FI, LI);
+	FreeLib();
+
+	BLOG(L"BASS has been shutdown and is ready to be freed.");
 }
 
 bool BASS::SetCustomLoadDir(wchar_t* Directory, size_t DirectoryBuf) {
@@ -53,14 +66,14 @@ bool BASS::SetCustomLoadDir(wchar_t* Directory, size_t DirectoryBuf) {
 		return false;
 	}
 
-	if (wcslen(CustomDir) != 0) {
+	if (wcslen(this->CustomDir) != 0) {
 		BERROR(L"There's already a dir stored in memory, it will be overwrited...", false);
-		free(CustomDir);
+		free(this->CustomDir);
 	}
 
-	if (CustomDir != nullptr) {
-		memset(CustomDir, 0, sizeof(wchar_t) * MAX_PATH);
-		wcscpy_s(CustomDir, sizeof(wchar_t) * MAX_PATH, Directory);
+	if (this->CustomDir != nullptr) {
+		memset(this->CustomDir, 0, sizeof(wchar_t) * MAX_PATH);
+		wcscpy_s(this->CustomDir, sizeof(wchar_t) * MAX_PATH, Directory);
 
 		BLOG(L"Custom dir stored successfully into memory.");
 		return true;

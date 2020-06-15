@@ -8,7 +8,6 @@ This file is useful only if you want to compile the driver under Windows, it's n
 #ifdef _WIN32
 
 #include "WinDriver.hpp"
-#include "BASS.hpp"
 
 namespace WinDriver {
 	bool LibLoader::LoadLib(HMODULE* Target, wchar_t* Lib, wchar_t* CustomDir) {
@@ -58,6 +57,8 @@ namespace WinDriver {
 			}
 		}
 		else DLOG(LibErr, L"The lib isn't loaded.");
+
+		return true;
 	}
 
 	bool DriverMask::ChangeName(const wchar_t* NewName) {

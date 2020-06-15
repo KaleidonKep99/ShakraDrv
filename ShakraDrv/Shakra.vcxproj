@@ -174,16 +174,17 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="BASS.cpp" />
+    <ClCompile Include="BASSLib.cpp" />
     <ClCompile Include="WinDriver.cpp" />
     <ClCompile Include="WinError.cpp" />
     <ClCompile Include="WinMain.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="BASS.hpp" />
+    <ClInclude Include="BASSLib.hpp" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="WinError.hpp" />
     <ClInclude Include="WinDriver.hpp" />
+    <ClInclude Include="WinMain.hpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Resource.rc" />

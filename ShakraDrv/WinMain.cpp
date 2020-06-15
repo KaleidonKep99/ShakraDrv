@@ -5,12 +5,12 @@ This .cpp file contains the required code to run the driver under Windows 8.1 an
 This file is useful only if you want to compile the driver under Windows, it's not needed for Linux/macOS porting.
 */
 
-#include "WinDriver.hpp"
-#include "WinError.hpp"
+#include "WinMain.hpp"
 
 static WinDriver::DriverComponent DriverComponent;
 static WinDriver::DriverMask DriverMask;
 static ErrorSystem DrvErr;
+static BASS BASSSys;
 
 BOOL WINAPI DllMain(HINSTANCE HinstanceDLL, DWORD fdwReason, LPVOID lpvR) {
 	switch (fdwReason) {
@@ -85,6 +85,7 @@ MMRESULT modMessage(UINT DeviceIdentifier, UINT Message, DWORD_PTR DriverAddress
 		// Open the driver, and if everything goes fine, inform the app through a callback
 		if (DriverComponent.OpenDriver((LPMIDIOPENDESC)Param1, (DWORD)Param2, DriverAddress)) {
 			// Initialize BASS
+			BASSSys = BASS(-1, 0, BASS_DEVICE_DEFAULT);
 
 			DriverComponent.CallbackFunction(MM_MOM_OPEN, 0, 0);
 

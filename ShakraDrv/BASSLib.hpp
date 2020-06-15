@@ -65,6 +65,7 @@ public:
 	bool SetCustomLoadDir(wchar_t*, size_t);
 
 	// Init
+	BASS();
 	BASS(int, int);
 	BASS(int, int, int);
 	~BASS();
