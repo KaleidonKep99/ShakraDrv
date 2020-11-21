@@ -2,5 +2,6 @@
 ShakraDrv/.vs/
 ShakraDrv/Debug/
 ShakraDrv/Release/
+ShakraDrv/x64/
 *.vcxproj.filters
 *.vcxproj.user

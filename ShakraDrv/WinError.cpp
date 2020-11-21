@@ -28,7 +28,12 @@ void ErrorSystem::ThrowError(const wchar_t* Error, const wchar_t* Position, cons
 	wchar_t* Buf;
 
 	Buf = (wchar_t*)malloc(SZBufSize);
+
+#ifdef _DEBUG
 	swprintf_s(Buf, BufSize, L"An error has occured in the \"%s\" function!\n\nFile: %s\nLine: %s\n\nError: %s", Position, File, Line, Error);
+#else
+	swprintf_s(Buf, BufSize, L"An error has occured in the \"%s\" function!\n\nError: %s", Position, Error);
+#endif
 
 	MessageBox(NULL, Buf, L"Shakra - Error", IsSeriousError ? MB_ICONERROR : MB_ICONWARNING | MB_OK | MB_SYSTEMMODAL);
 

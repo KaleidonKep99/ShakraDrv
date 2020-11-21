@@ -48,13 +48,20 @@ void __stdcall DriverRegistration(HWND HWND, HINSTANCE HinstanceDLL, LPSTR Comma
 	bool Registration = (_stricmp(CommandLine, "RegisterDrv") == 0), UnregisterPass = false;;
 
 	// Used for registration
-	HKEY DeviceRegKey, DriverSubKey, DriversSubKey;
+	HKEY DeviceRegKey, DriverSubKey, DriversSubKey, Drivers32Key;
 	HDEVINFO DeviceInfo;
 	SP_DEVINFO_DATA DeviceInfoData;
 	DEVPROPTYPE DevicePropertyType;
 	WCHAR szBuffer[4096];
-	DWORD dwSize, dwPropertyRegDataType;
+	DWORD dwSize, dwPropertyRegDataType, dummy;
 	DWORD configClass = CONFIGFLAG_MANUAL_INSTALL | CONFIGFLAG_NEEDS_FORCED_CONFIG;
+
+	// If user is not an admin, abort.
+	if (!IsUserAnAdmin()) 
+	{
+		DERROR(DrvErr, L"You can not manage the driver without administration rights.", true);
+		return;
+	}
 
 	// We need to register, woohoo
 	if (_stricmp(CommandLine, "RegisterDrv") == 0 || _stricmp(CommandLine, "UnregisterDrv") == 0) {
@@ -109,7 +116,8 @@ void __stdcall DriverRegistration(HWND HWND, HINSTANCE HinstanceDLL, LPSTR Comma
 
 		if (Registration) 
 		{
-			if (!SetupDiCreateDeviceInfo(DeviceInfo, DEVICE_NAME_MEDIA, &DevGUID, DEVICE_DESCRIPTION, NULL, DICD_GENERATE_ID, &DeviceInfoData)) {
+			if (!SetupDiCreateDeviceInfo(DeviceInfo, DEVICE_NAME_MEDIA, &DevGUID, DEVICE_DESCRIPTION, NULL, DICD_GENERATE_ID, &DeviceInfoData)) 
+			{
 				SetupDiDestroyDeviceInfoList(DeviceInfo);
 				DERROR(DrvErr, L"SetupDiCreateDeviceInfo failed, unable to register the driver.", true);
 				return;
@@ -160,9 +168,7 @@ void __stdcall DriverRegistration(HWND HWND, HINSTANCE HinstanceDLL, LPSTR Comma
 				return;
 			}
 
-			RegCloseKey(DriversSubKey);
-
-			if (RegSetValueEx(DriverSubKey, DRIVER_SUBCLASS_PROP_DRIVER, NULL, REG_SZ, (LPBYTE)SHAKRA_DRIVER_NAME, sizeof(SHAKRA_DRIVER_NAME)) != ERROR_SUCCESS) 
+			if (RegSetValueEx(DriverSubKey, DRIVER_SUBCLASS_PROP_DRIVER, NULL, REG_SZ, (LPBYTE)SHAKRA_DRIVER_NAME, sizeof(SHAKRA_DRIVER_NAME)) != ERROR_SUCCESS)
 			{
 				DERROR(DrvErr, L"RegSetValueEx failed to write DRIVER_SUBCLASS_PROP_DRIVER, unable to register the driver.", true);
 				return;
@@ -174,16 +180,54 @@ void __stdcall DriverRegistration(HWND HWND, HINSTANCE HinstanceDLL, LPSTR Comma
 				return;
 			}
 
-			MIDIRegEntryName EntryName;
-			int MIDIEntry = 0;
-			const wchar_t* ShakraEntryName = EntryName.withIndex(MIDIEntry)->ToString();
-			if (RegSetValueEx(DriverSubKey, DRIVER_SUBCLASS_PROP_ALIAS, NULL, REG_SZ, (LPBYTE)ShakraEntryName, sizeof(MIDI_REGISTRY_ENTRY_TEMPLATE)) != ERROR_SUCCESS)
-			{
-				DERROR(DrvErr, L"RegSetValueEx failed to write DRIVER_SUBCLASS_PROP_ALIAS, unable to register the driver.", true);
+			// Register it under Drivers32 too
+			if (RegCreateKeyEx(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Drivers32", 0, NULL, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, &Drivers32Key, &dummy) != ERROR_SUCCESS) {
+				DERROR(DrvErr, L"RegCreateKeyEx failed to open the Drivers32 key, unable to register the driver.", true);
 				return;
 			}
 
+			for (int MIDIEntry = 1; MIDIEntry < 32; MIDIEntry++) 
+			{
+				wchar_t Buf[255] = { 0 };
+				wchar_t ShakraKey[255] = { 0 };
+				DWORD bufSize = sizeof(Buf);
+
+				swprintf_s(ShakraKey, MIDI_REGISTRY_ENTRY_TEMPLATE, MIDIEntry);
+				DLOG(DrvErr, L"Copied MIDI_REGISTRY_ENTRY_TEMPLATE with correct value to ShakraKey.");
+
+				if (RegQueryValueExW(Drivers32Key, ShakraKey, 0, 0, reinterpret_cast<LPBYTE>(&Buf), &bufSize) != ERROR_SUCCESS)
+				{
+					DLOG(DrvErr, L"Key does not exist, let's create it.");
+
+					if (RegSetValueEx(Drivers32Key, ShakraKey, NULL, REG_SZ, (LPBYTE)DRIVER_SUBCLASS_SUBKEYS, sizeof(DRIVER_SUBCLASS_SUBKEYS)) != ERROR_SUCCESS)
+					{
+						DERROR(DrvErr, L"RegSetValueEx failed to write the MIDI alias to Drivers32, unable to register the driver.", true);
+						return;
+					}
+
+					if (RegSetValueEx(DeviceRegKey, DRIVER_SUBCLASS_PROP_ALIAS, NULL, REG_SZ, (LPBYTE)ShakraKey, sizeof(MIDI_REGISTRY_ENTRY_TEMPLATE)) != ERROR_SUCCESS)
+					{
+						DERROR(DrvErr, L"RegSetValueEx failed to write DRIVER_SUBCLASS_PROP_ALIAS, unable to register the driver.", true);
+						return;
+					}
+
+					break;
+				}
+				else 
+				{
+					if (_wcsicmp(Buf, DRIVER_SUBCLASS_SUBKEYS) == 0)
+					{
+						DERROR(DrvErr, L"The driver has been already registered!", false);
+						return;
+					}
+
+					DLOG(DrvErr, Buf);
+				}
+			}
+
+			RegCloseKey(Drivers32Key);
 			RegCloseKey(DeviceRegKey);
+			RegCloseKey(DriversSubKey);
 
 			MessageBox(HWND, L"Driver successfully registered!", L"Shakra - Success", MB_OK | MB_ICONINFORMATION);
 		}
@@ -195,7 +239,39 @@ void __stdcall DriverRegistration(HWND HWND, HINSTANCE HinstanceDLL, LPSTR Comma
 				return;
 			}
 
+			// Register it under Drivers32 too
+			if (RegCreateKeyEx(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Drivers32", 0, NULL, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, &Drivers32Key, &dummy) != ERROR_SUCCESS) {
+				DERROR(DrvErr, L"RegCreateKeyEx failed to open the Drivers32 key, unable to unregister the driver.", true);
+				return;
+			}
+
+			for (int MIDIEntry = 1; MIDIEntry < 32; MIDIEntry++)
+			{
+				wchar_t Buf[255] = { 0 };
+				wchar_t ShakraKey[255] = { 0 };
+				DWORD bufSize = sizeof(Buf);
+
+				swprintf_s(ShakraKey, MIDI_REGISTRY_ENTRY_TEMPLATE, MIDIEntry);
+				DLOG(DrvErr, L"Copied MIDI_REGISTRY_ENTRY_TEMPLATE with correct value to ShakraKey.");
+
+				if (RegQueryValueExW(Drivers32Key, ShakraKey, 0, 0, reinterpret_cast<LPBYTE>(&Buf), &bufSize) == ERROR_SUCCESS)
+				{
+					DLOG(DrvErr, L"Driver has been found in the Drivers32 subkey.");
+
+					if (_wcsicmp(Buf, DRIVER_SUBCLASS_SUBKEYS) == 0)
+					{
+						RegDeleteValue(Drivers32Key, ShakraKey);
+						DLOG(DrvErr, L"Driver has been removed from the Drivers32 subkey.");
+
+						break;
+					}
+				}
+				else continue;
+			}
+
+			RegCloseKey(Drivers32Key);
 			SetupDiDestroyDeviceInfoList(DeviceInfo);
+
 			MessageBox(HWND, L"Driver successfully unregistered!", L"Shakra - Success", MB_OK | MB_ICONINFORMATION);
 		}
 
@@ -210,6 +286,10 @@ void __stdcall DriverRegistration(HWND HWND, HINSTANCE HinstanceDLL, LPSTR Comma
 			"Shakra", MB_ICONERROR | MB_OK);
 		return;
 	}
+}
+
+void __stdcall MIDIRegistration(HWND HWND, HINSTANCE HinstanceDLL, LPSTR CommandLine, DWORD CmdShow) {
+
 }
 
 long __stdcall DriverProc(DWORD DriverIdentifier, HDRVR DriverHandle, UINT Message, LONG Param1, LONG Param2) {

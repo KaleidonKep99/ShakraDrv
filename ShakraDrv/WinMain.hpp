@@ -31,7 +31,7 @@ DEFINE_DEVPROPKEY(DEVPKEY_Device_LocationInfo, 0xa45c254e, 0xdf1c, 0x4efd, 0x80,
 DEFINE_DEVPROPKEY(DEVPKEY_Device_Manufacturer, 0xa45c254e, 0xdf1c, 0x4efd, 0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0, 13);			// DEVPROP_TYPE_STRING
 DEFINE_DEVPROPKEY(DEVPKEY_Device_SecuritySDS, 0xa45c254e, 0xdf1c, 0x4efd, 0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0, 26);			// DEVPROP_TYPE_SECURITY_DESCRIPTOR_STRING
 
-const GUID DevGUID = GUID_DEVCLASS_LEGACYDRIVER;
+const GUID DevGUID = GUID_DEVCLASS_MEDIA;
 const wchar_t DEVICE_NAME_MEDIA[] = L"MEDIA";
 const wchar_t DEVICE_DESCRIPTION[] = L"Shakra MIDI Output Device (User-Mode)";
 const wchar_t DRIVER_PROVIDER_NAME[] = L"Keppy's Software";
@@ -49,25 +49,4 @@ const wchar_t SHAKRA_DRIVER_NAME[] = L"Shakra.dll";
 static bool DriverBusy = false;
 
 // MIDI REG
-const wchar_t MIDI_REGISTRY_ENTRY_TEMPLATE[] = L"midi?";
-const int MIDI_REGISTRY_ENTRY_TEMPLATE_VAR_INDEX = sizeof(MIDI_REGISTRY_ENTRY_TEMPLATE) - 2;
-
-class MIDIRegEntryName {
-public:
-	MIDIRegEntryName() {
-		wcsncpy_s(EntryName, MIDI_REGISTRY_ENTRY_TEMPLATE, sizeof(MIDI_REGISTRY_ENTRY_TEMPLATE));
-	}
-
-	MIDIRegEntryName* withIndex(int index) {
-		EntryName[MIDI_REGISTRY_ENTRY_TEMPLATE_VAR_INDEX] = 0 < index && index < 10 ? '0' + index : 0;
-		return this;
-	}
-
-	const wchar_t* ToString() {
-		return EntryName;
-	}
-
-private:
-	wchar_t EntryName[sizeof(MIDI_REGISTRY_ENTRY_TEMPLATE)];
-};
-// MIDI REG
+const wchar_t MIDI_REGISTRY_ENTRY_TEMPLATE[] = L"midi%d";
