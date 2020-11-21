@@ -1,0 +1,5 @@
+﻿cl : command line warning D9002: ignoring unknown option '/arch:SSE2'
+  WinMain.cpp
+E:\GitHub\Shakra\ShakraDrv\WinMain.cpp(54,14): warning C4101: 'DevicePropertyType': unreferenced local variable
+E:\GitHub\Shakra\ShakraDrv\WinMain.cpp(240,22): warning C4244: 'return': conversion from 'LRESULT' to 'long', possible loss of data
+  Shakra.vcxproj -> E:\GitHub\Shakra\ShakraDrv\x64\Debug\Shakra.dll

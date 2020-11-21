@@ -13,6 +13,10 @@ This file is useful only if you want to compile the driver under Windows, it's n
 using namespace std;
 
 class ErrorSystem {
+private:
+	static const int BufSize = 2048;
+	static const int SZBufSize = sizeof(wchar_t) * BufSize;
+
 public:
 	void Log(const wchar_t*, const wchar_t*, const wchar_t*, const wchar_t*);
 	void ThrowError(const wchar_t*, const wchar_t*, const wchar_t*, const wchar_t*, bool);

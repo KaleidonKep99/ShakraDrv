@@ -87,7 +87,7 @@ namespace WinDriver {
 		bool CloseDriver();
 
 		// Callbacks
-		void CallbackFunction(DWORD, DWORD, DWORD);
+		void CallbackFunction(DWORD, DWORD_PTR, DWORD_PTR);
 	};
 
 	class Blacklist {

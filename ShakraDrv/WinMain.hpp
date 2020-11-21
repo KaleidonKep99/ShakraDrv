@@ -11,3 +11,63 @@ This file is useful only if you want to compile the driver under Windows, it's n
 #include "WinDriver.hpp"
 #include "WinError.hpp"
 #include "BASSLib.hpp"
+#include <devguid.h>
+#include <newdev.h>
+#include <setupapi.h>
+#include <Devguid.h>
+#include <RegStr.h>
+
+#ifdef DEFINE_DEVPROPKEY
+#undef DEFINE_DEVPROPKEY
+#endif
+#define DEFINE_DEVPROPKEY(name, l, w1, w2, b1, b2, b3, b4, b5, b6, b7, b8, pid) EXTERN_C const DEVPROPKEY DECLSPEC_SELECTANY name = { { l, w1, w2, { b1, b2,  b3,  b4,  b5,  b6,  b7,  b8 } }, pid }
+
+// Copied from devpkey.h in the WinDDK
+DEFINE_DEVPROPKEY(DEVPKEY_Device_BusReportedDeviceDesc, 0x540b947e, 0x8b40, 0x45bc, 0xa8, 0xa2, 0x6a, 0x0b, 0x89, 0x4c, 0xbd, 0xa2, 4);	// DEVPROP_TYPE_STRING
+DEFINE_DEVPROPKEY(DEVPKEY_Device_ContainerId, 0x8c7ed206, 0x3f8a, 0x4827, 0xb3, 0xab, 0xae, 0x9e, 0x1f, 0xae, 0xfc, 0x6c, 2);			// DEVPROP_TYPE_GUID
+DEFINE_DEVPROPKEY(DEVPKEY_Device_FriendlyName, 0xa45c254e, 0xdf1c, 0x4efd, 0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0, 14);			// DEVPROP_TYPE_STRING
+DEFINE_DEVPROPKEY(DEVPKEY_DeviceDisplay_Category, 0x78c34fc8, 0x104a, 0x4aca, 0x9e, 0xa4, 0x52, 0x4d, 0x52, 0x99, 0x6e, 0x57, 0x5a);	// DEVPROP_TYPE_STRING_LIST
+DEFINE_DEVPROPKEY(DEVPKEY_Device_LocationInfo, 0xa45c254e, 0xdf1c, 0x4efd, 0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0, 15);			// DEVPROP_TYPE_STRING
+DEFINE_DEVPROPKEY(DEVPKEY_Device_Manufacturer, 0xa45c254e, 0xdf1c, 0x4efd, 0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0, 13);			// DEVPROP_TYPE_STRING
+DEFINE_DEVPROPKEY(DEVPKEY_Device_SecuritySDS, 0xa45c254e, 0xdf1c, 0x4efd, 0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0, 26);			// DEVPROP_TYPE_SECURITY_DESCRIPTOR_STRING
+
+const GUID DevGUID = GUID_DEVCLASS_LEGACYDRIVER;
+const wchar_t DEVICE_NAME_MEDIA[] = L"MEDIA";
+const wchar_t DEVICE_DESCRIPTION[] = L"Shakra MIDI Output Device (User-Mode)";
+const wchar_t DRIVER_PROVIDER_NAME[] = L"Keppy's Software";
+const wchar_t DRIVER_CLASS_PROP_DRIVER_DESC[] = L"DriverDesc";
+const wchar_t DRIVER_CLASS_PROP_PROVIDER_NAME[] = L"ProviderName";
+const wchar_t DRIVER_CLASS_SUBKEY_DRIVERS[] = L"Drivers";
+const wchar_t DRIVER_CLASS_PROP_SUBCLASSES[] = L"SubClasses";
+const wchar_t DRIVER_CLASS_SUBCLASSES[] = L"MIDI";
+const wchar_t DRIVER_SUBCLASS_SUBKEYS[] = L"Shakra\\Shakra.dll";
+const wchar_t DRIVER_SUBCLASS_PROP_DRIVER[] = L"Driver";
+const wchar_t DRIVER_SUBCLASS_PROP_DESCRIPTION[] = L"Description";
+const wchar_t DRIVER_SUBCLASS_PROP_ALIAS[] = L"Alias";
+const wchar_t SHAKRA_DRIVER_NAME[] = L"Shakra.dll";
+
+static bool DriverBusy = false;
+
+// MIDI REG
+const wchar_t MIDI_REGISTRY_ENTRY_TEMPLATE[] = L"midi?";
+const int MIDI_REGISTRY_ENTRY_TEMPLATE_VAR_INDEX = sizeof(MIDI_REGISTRY_ENTRY_TEMPLATE) - 2;
+
+class MIDIRegEntryName {
+public:
+	MIDIRegEntryName() {
+		wcsncpy_s(EntryName, MIDI_REGISTRY_ENTRY_TEMPLATE, sizeof(MIDI_REGISTRY_ENTRY_TEMPLATE));
+	}
+
+	MIDIRegEntryName* withIndex(int index) {
+		EntryName[MIDI_REGISTRY_ENTRY_TEMPLATE_VAR_INDEX] = 0 < index && index < 10 ? '0' + index : 0;
+		return this;
+	}
+
+	const wchar_t* ToString() {
+		return EntryName;
+	}
+
+private:
+	wchar_t EntryName[sizeof(MIDI_REGISTRY_ENTRY_TEMPLATE)];
+};
+// MIDI REG
