@@ -31,16 +31,19 @@ DEFINE_DEVPROPKEY(DEVPKEY_Device_LocationInfo, 0xa45c254e, 0xdf1c, 0x4efd, 0x80,
 DEFINE_DEVPROPKEY(DEVPKEY_Device_Manufacturer, 0xa45c254e, 0xdf1c, 0x4efd, 0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0, 13);			// DEVPROP_TYPE_STRING
 DEFINE_DEVPROPKEY(DEVPKEY_Device_SecuritySDS, 0xa45c254e, 0xdf1c, 0x4efd, 0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0, 26);			// DEVPROP_TYPE_SECURITY_DESCRIPTOR_STRING
 
+// IsWoW64Process
+typedef WINBASEAPI BOOL(WINAPI* fIW64P)(_In_ HANDLE, _Out_ PBOOL);
+
 const GUID DevGUID = GUID_DEVCLASS_MEDIA;
 const wchar_t DEVICE_NAME_MEDIA[] = L"MEDIA";
-const wchar_t DEVICE_DESCRIPTION[] = L"Shakra MIDI Output Device (User-Mode)";
+const wchar_t DEVICE_DESCRIPTION[] = L"Shakra Driver for Windows NT";
 const wchar_t DRIVER_PROVIDER_NAME[] = L"Keppy's Software";
 const wchar_t DRIVER_CLASS_PROP_DRIVER_DESC[] = L"DriverDesc";
 const wchar_t DRIVER_CLASS_PROP_PROVIDER_NAME[] = L"ProviderName";
 const wchar_t DRIVER_CLASS_SUBKEY_DRIVERS[] = L"Drivers";
 const wchar_t DRIVER_CLASS_PROP_SUBCLASSES[] = L"SubClasses";
-const wchar_t DRIVER_CLASS_SUBCLASSES[] = L"MIDI";
-const wchar_t DRIVER_SUBCLASS_SUBKEYS[] = L"Shakra\\Shakra.dll";
+const wchar_t DRIVER_CLASS_SUBCLASSES[] = L"midi";
+const wchar_t DRIVER_SUBCLASS_SUBKEYS[] = L"midi\\Shakra.dll";
 const wchar_t DRIVER_SUBCLASS_PROP_DRIVER[] = L"Driver";
 const wchar_t DRIVER_SUBCLASS_PROP_DESCRIPTION[] = L"Description";
 const wchar_t DRIVER_SUBCLASS_PROP_ALIAS[] = L"Alias";

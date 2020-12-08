@@ -27,15 +27,16 @@ bool WinDriver::LibLoader::LoadLib(HMODULE* Target, wchar_t* Lib, wchar_t* Custo
 		}
 		else {
 			wchar_t* SPath;
-			HRESULT SHR = SHGetKnownFolderPath(FOLDERID_System, KF_FLAG_NO_ALIAS, NULL, &SPath);
+			HRESULT SHR = SHGetKnownFolderPath(FOLDERID_ProgramFiles, KF_FLAG_NO_ALIAS, NULL, &SPath);
 
 			if (!SUCCEEDED(SHR)) {
-				DERROR(LibErr, L"Failed to get system directory.", false);
+				DERROR(LibErr, L"Failed to get Program Files directory.", false);
 				return false;
 			}
 
 			wcscat_s(FPath, MAX_PATH, SPath);
-			wcscat_s(FPath, MAX_PATH, L"\\Shakra");
+			wcscat_s(FPath, MAX_PATH, L"\\Shakra\\");
+			CoTaskMemFree(SPath);
 		}
 
 		wcscat_s(FPath, MAX_PATH, Lib);
@@ -43,6 +44,7 @@ bool WinDriver::LibLoader::LoadLib(HMODULE* Target, wchar_t* Lib, wchar_t* Custo
 			DERROR(LibErr, L"Failed to load BASS into memory.", false);
 			return false;
 		}
+
 	}
 
 	return true;

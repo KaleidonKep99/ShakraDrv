@@ -12,12 +12,14 @@ This file is required for both Windows and Linux.
 
 #ifdef _WIN32
 
-#define MAXDIRLEN	MAX_PATH
-#define BASSDEF(f)	(WINAPI *f)
+#define MAXDIRLEN		MAX_PATH
+#define BASSDEF(f)		(WINAPI *f)
+#define BASSMIDIDEF(f)	(WINAPI *f)
 
 #include <Windows.h>
 #include <tchar.h>
 #include "inc/win32/bass.h"
+#include "inc/win32/bassmidi.h"
 #include "WinDriver.hpp"
 #include "WinError.hpp"
 
@@ -42,12 +44,14 @@ private:
 	wchar_t CustomDir[MAXDIRLEN] = { 0 };
 	int OutputID = 0;
 	int AudioFreq = 0;
+	int StreamAddress = 0;
 	int Flgs = NULL;
 	bool _Fail = false;
 
 #ifdef _WIN32
 	WinDriver::LibLoader LibLoader;
-	HMODULE BASSLib = nullptr;
+	HMODULE BLib = nullptr;
+	HMODULE BMLib = nullptr;
 #elif __linux__
 	// stub
 #elif __APPLE__
@@ -59,40 +63,52 @@ private:
 	bool LoadLib() {
 #ifdef _WIN32
 
-		wchar_t LibName[10] = L"\\bass.dll";
-		bool Success = LibLoader.LoadLib(&BASSLib, LibName, CustomDir);
-		if (Success && BASSLib != nullptr) {
-			LOADLIBFUNCTION(BASSLib, BASS_ChannelFlags);
-			LOADLIBFUNCTION(BASSLib, BASS_ChannelGetAttribute);
-			LOADLIBFUNCTION(BASSLib, BASS_ChannelGetData);
-			LOADLIBFUNCTION(BASSLib, BASS_ChannelGetLevelEx);
-			LOADLIBFUNCTION(BASSLib, BASS_ChannelIsActive);
-			LOADLIBFUNCTION(BASSLib, BASS_ChannelPlay);
-			LOADLIBFUNCTION(BASSLib, BASS_ChannelRemoveFX);
-			LOADLIBFUNCTION(BASSLib, BASS_ChannelSeconds2Bytes);
-			LOADLIBFUNCTION(BASSLib, BASS_ChannelSeconds2Bytes);
-			LOADLIBFUNCTION(BASSLib, BASS_ChannelSetAttribute);
-			LOADLIBFUNCTION(BASSLib, BASS_ChannelSetDevice);
-			LOADLIBFUNCTION(BASSLib, BASS_ChannelSetFX);
-			LOADLIBFUNCTION(BASSLib, BASS_ChannelSetSync);
-			LOADLIBFUNCTION(BASSLib, BASS_ChannelStop);
-			LOADLIBFUNCTION(BASSLib, BASS_ChannelUpdate);
-			LOADLIBFUNCTION(BASSLib, BASS_ErrorGetCode);
-			LOADLIBFUNCTION(BASSLib, BASS_FXSetParameters);
-			LOADLIBFUNCTION(BASSLib, BASS_Free);
-			LOADLIBFUNCTION(BASSLib, BASS_GetDevice);
-			LOADLIBFUNCTION(BASSLib, BASS_GetDeviceInfo);
-			LOADLIBFUNCTION(BASSLib, BASS_GetInfo);
-			LOADLIBFUNCTION(BASSLib, BASS_IsStarted);
-			LOADLIBFUNCTION(BASSLib, BASS_Init);
-			LOADLIBFUNCTION(BASSLib, BASS_PluginFree);
-			LOADLIBFUNCTION(BASSLib, BASS_PluginLoad);
-			LOADLIBFUNCTION(BASSLib, BASS_SetConfig);
-			LOADLIBFUNCTION(BASSLib, BASS_SetDevice);
-			LOADLIBFUNCTION(BASSLib, BASS_SetVolume);
-			LOADLIBFUNCTION(BASSLib, BASS_Stop);
-			LOADLIBFUNCTION(BASSLib, BASS_StreamFree);
-			LOADLIBFUNCTION(BASSLib, BASS_Update);
+		bool Success = LibLoader.LoadLib(&BLib, (wchar_t*)L"bass.dll", CustomDir);
+		if (LibLoader.LoadLib(&BLib, (wchar_t*)L"bass.dll", CustomDir) && 
+			LibLoader.LoadLib(&BMLib, (wchar_t*)L"bassmidi.dll", CustomDir)) {
+
+			// Load funcs from BASS
+			LOADLIBFUNCTION(BLib, BASS_ChannelFlags);
+			LOADLIBFUNCTION(BLib, BASS_ChannelGetAttribute);
+			LOADLIBFUNCTION(BLib, BASS_ChannelGetData);
+			LOADLIBFUNCTION(BLib, BASS_ChannelGetLevelEx);
+			LOADLIBFUNCTION(BLib, BASS_ChannelIsActive);
+			LOADLIBFUNCTION(BLib, BASS_ChannelPlay);
+			LOADLIBFUNCTION(BLib, BASS_ChannelRemoveFX);
+			LOADLIBFUNCTION(BLib, BASS_ChannelSeconds2Bytes);
+			LOADLIBFUNCTION(BLib, BASS_ChannelSeconds2Bytes);
+			LOADLIBFUNCTION(BLib, BASS_ChannelSetAttribute);
+			LOADLIBFUNCTION(BLib, BASS_ChannelSetDevice);
+			LOADLIBFUNCTION(BLib, BASS_ChannelSetFX);
+			LOADLIBFUNCTION(BLib, BASS_ChannelSetSync);
+			LOADLIBFUNCTION(BLib, BASS_ChannelStop);
+			LOADLIBFUNCTION(BLib, BASS_ChannelUpdate);
+			LOADLIBFUNCTION(BLib, BASS_ErrorGetCode);
+			LOADLIBFUNCTION(BLib, BASS_Free);
+			LOADLIBFUNCTION(BLib, BASS_FXSetParameters);
+			LOADLIBFUNCTION(BLib, BASS_GetDevice);
+			LOADLIBFUNCTION(BLib, BASS_GetDeviceInfo);
+			LOADLIBFUNCTION(BLib, BASS_GetInfo);
+			LOADLIBFUNCTION(BLib, BASS_Init);
+			LOADLIBFUNCTION(BLib, BASS_IsStarted);
+			LOADLIBFUNCTION(BLib, BASS_PluginFree);
+			LOADLIBFUNCTION(BLib, BASS_PluginLoad);
+			LOADLIBFUNCTION(BLib, BASS_SetConfig);
+			LOADLIBFUNCTION(BLib, BASS_SetDevice);
+			LOADLIBFUNCTION(BLib, BASS_SetVolume);
+			LOADLIBFUNCTION(BLib, BASS_Stop);
+			LOADLIBFUNCTION(BLib, BASS_StreamFree);
+			LOADLIBFUNCTION(BLib, BASS_Update);
+
+			// Load funcs from BASSMIDI
+			LOADLIBFUNCTION(BMLib, BASS_MIDI_StreamCreate);
+			LOADLIBFUNCTION(BMLib, BASS_MIDI_StreamEvent);
+			LOADLIBFUNCTION(BMLib, BASS_MIDI_StreamEvents);
+			LOADLIBFUNCTION(BMLib, BASS_MIDI_StreamLoadSamples);
+			LOADLIBFUNCTION(BMLib, BASS_MIDI_StreamSetFonts);
+			LOADLIBFUNCTION(BMLib, BASS_MIDI_StreamCreate);
+			LOADLIBFUNCTION(BMLib, BASS_MIDI_StreamCreate);
+			LOADLIBFUNCTION(BMLib, BASS_MIDI_StreamCreate);
 
 			if (BASS_Init)
 				BLOG(L"Something's wrong! BASS_Init has no address.");
@@ -122,7 +138,7 @@ private:
 			return false;
 		}
 
-		return LibLoader.FreeLib(&BASSLib);
+		return LibLoader.FreeLib(&BLib);
 
 #elif __linux__
 
@@ -170,25 +186,28 @@ public:
 			BLOG(L"BASS is ready for incoming streams.");
 		}
 		else {
-			BERROR(L"Shakra failed to load BASS.DLL.", false);
+			BERROR(L"Shakra failed to load the required BASS libraries.", false);
 			this->_Fail = true;
 		}
 	}
 
 	void Free() {
-		if (!BASSLib) {
+		if (!BLib && !BMLib) {
+			BLOG(L"BASS isn't loaded, the app probably called ::Free() by accident, ignore.");
+			return;
+		}
+
+		if (!BLib) {
 			if (BASS_Free()) {
 				BERROR(L"BASS encountered an error while trying to free its resources.", false);
 				this->_Fail = true;
 				return;
 			}
 
-			FreeLib();
 			BLOG(L"BASS has been shutdown and is ready to be freed.");
-			return;
 		}
 
-		BLOG(L"BASS isn't loaded, the app probably sent a midiOutClose/midiStreamClose message by accident, ignore.");
+		FreeLib();
 	}
 
 	// Only used by apps that are bundled with the driver
@@ -204,7 +223,7 @@ public:
 		}
 
 		if (wcslen(this->CustomDir) != 0) {
-			BERROR(L"There's already a dir stored in memory, it will be overwrited...", false);
+			BERROR(L"There's already a dir stored in memory, it will be overwritten...", false);
 			free(this->CustomDir);
 		}
 
