@@ -9,56 +9,56 @@ This file is useful only if you want to compile the driver under Windows, it's n
 
 #include "WinDriver.hpp"
 
-bool WinDriver::LibLoader::LoadLib(HMODULE* Target, wchar_t* Lib, wchar_t* CustomDir) {
+bool WinDriver::LibLoader::LoadLib(WinLib* Target, wchar_t* Lib, wchar_t* CustomDir) {
 	wchar_t FPath[MAX_PATH] = { 0 };
 
-	if ((*Target) != nullptr)
+	if (Target->Lib != nullptr)
 	{
-		DLOG(LibErr, L"BASS has already been loaded through another function. All good.");
+		LOG(LibErr, L"BASS has already been loaded through another function. All good.");
 		return true;
 	}
 
-	if (!((*Target) = LoadLibrary(Lib))) {
-		DLOG(LibErr, L"No BASS lib found in memory. We'll load our own.");
+	if (!(Target->Lib = GetModuleHandleW(Lib))) {
+		LOG(LibErr, L"No BASS lib found in memory. We'll load our own.");
 
-		if (wcslen(CustomDir) > 1) {
-			DLOG(LibErr, L"A custom dir has been specified, we'll use it to load BASS.");
+		if (CustomDir != nullptr) {
+			LOG(LibErr, L"A custom dir has been specified, we'll use it to load BASS.");
 			wcscat_s(FPath, MAX_PATH, CustomDir);
 		}
 		else {
-			wchar_t* SPath;
+			PWSTR SPath;
 			HRESULT SHR = SHGetKnownFolderPath(FOLDERID_ProgramFiles, KF_FLAG_NO_ALIAS, NULL, &SPath);
 
+			if (SUCCEEDED(SHR))
+				swprintf_s(FPath, MAX_PATH, L"%s\\Shakra\\%s", SPath, Lib);
+
+			CoTaskMemFree(SPath);
+
 			if (!SUCCEEDED(SHR)) {
-				DERROR(LibErr, L"Failed to get Program Files directory.", false);
+				NERROR(LibErr, L"Failed to get Program Files directory.", false);
 				return false;
 			}
 
-			wcscat_s(FPath, MAX_PATH, SPath);
-			wcscat_s(FPath, MAX_PATH, L"\\Shakra\\");
-			CoTaskMemFree(SPath);
 		}
 
-		wcscat_s(FPath, MAX_PATH, Lib);
-		if (!(*Target = LoadLibraryEx(FPath, NULL, 0))) {
-			DERROR(LibErr, L"Failed to load BASS into memory.", false);
+		if (!(Target->Lib = LoadLibrary(FPath))) {
+			NERROR(LibErr, L"Failed to load BASS into memory.", false);
 			return false;
 		}
-
 	}
 
 	return true;
 }
 
-bool WinDriver::LibLoader::FreeLib(HMODULE* Target) {
-	if ((*Target) != nullptr) {
-		if (!FreeLibrary(*Target)) {
-			DFERROR(LibErr, L"The driver failed to unload a library.\n\nThis is not supposed to happen!");
+bool WinDriver::LibLoader::FreeLib(WinLib* Target) {
+	if (Target->Lib != nullptr) {
+		if (!FreeLibrary(Target->Lib)) {
+			FNERROR(LibErr, L"The driver failed to unload a library.\n\nThis is not supposed to happen!");
 			return false;
 		}
-		(*Target) = nullptr;
+		Target->Lib = nullptr;
 	}
-	else DLOG(LibErr, L"The lib isn't loaded.");
+	else LOG(LibErr, L"The lib isn't loaded.");
 
 	return true;
 }
@@ -71,9 +71,9 @@ bool WinDriver::DriverMask::ChangeName(const wchar_t* NewName) {
 			return true;
 		}
 
-		DERROR(MaskErr, L"The name is too long!", false);
+		NERROR(MaskErr, L"The name is too long!", false);
 	}
-	else DERROR(MaskErr, L"Something went wrong while trying to access the new name. Memory corruption?", true);
+	else NERROR(MaskErr, L"Something went wrong while trying to access the new name. Memory corruption?", true);
 
 	return false;
 }
@@ -99,12 +99,12 @@ unsigned long WinDriver::DriverMask::GiveCaps(PVOID CapsPointer, DWORD CapsSize)
 	// Why would this happen? Stupid MIDI app dev smh
 	if (CapsPointer == nullptr)
 	{
-		DERROR(MaskErr, L"A null pointer has been passed to the function. The driver can't share its info with the application.", false);
+		NERROR(MaskErr, L"A null pointer has been passed to the function. The driver can't share its info with the application.", false);
 		return MMSYSERR_INVALPARAM;
 	}
 
 	if (CapsSize == 0) {
-		DERROR(MaskErr, L"CapsSize has a value of 0, how is the driver supposed to determine the subtype of the struct?", false);
+		NERROR(MaskErr, L"CapsSize has a value of 0, how is the driver supposed to determine the subtype of the struct?", false);
 		return MMSYSERR_INVALPARAM;
 	}
 
@@ -163,11 +163,41 @@ unsigned long WinDriver::DriverMask::GiveCaps(PVOID CapsPointer, DWORD CapsSize)
 		break;
 	}
 
-	DLOG(MaskErr, L"Caps have been shared with the app.");
+	LOG(MaskErr, L"Caps have been shared with the app.");
 	return MMSYSERR_NOERROR;
 }
 
-void WinDriver::DriverComponent::CallbackFunction(DWORD Message, DWORD_PTR Arg1, DWORD_PTR Arg2) {
+bool WinDriver::DriverCallback::PrepareCallbackFunction(MIDIOPENDESC* OpInfStruct) {
+	// Save the pointer's address to memory
+	this->WMMHandle = OpInfStruct->hMidi;
+
+	// Check if the app wants the driver to do callbacks
+	if (this->CallbackMode != CALLBACK_NULL) {
+		if (OpInfStruct->dwCallback != 0) {
+			this->Callback = OpInfStruct->dwCallback;
+			this->CallbackMode = CallbackMode;
+		}
+
+		// If callback mode is specified but no callback address is specified, abort the initialization
+		else {
+			NERROR(CallbackErr, L"No memory address has been specified for the callback function.", false);
+			return false;
+		}
+	}
+
+	return true;
+}
+
+bool WinDriver::DriverCallback::ClearCallbackFunction() {
+	this->WMMHandle = nullptr;
+	this->Callback = 0;
+	this->CallbackMode = CALLBACK_NULL;
+	this->Instance = 0;
+
+	return true;
+}
+
+void WinDriver::DriverCallback::CallbackFunction(DWORD Message, DWORD_PTR Arg1, DWORD_PTR Arg2) {
 	WMMC Callback = nullptr;
 	int ReturnMessage = 0;
 
@@ -178,9 +208,9 @@ void WinDriver::DriverComponent::CallbackFunction(DWORD Message, DWORD_PTR Arg1,
 		Callback = (*(WMMC)(this->Callback));
 
 		// It doesn't exist! Not good!
-		if (Callback == nullptr)
+		if (*Callback == nullptr)
 		{
-			DFERROR(DrvErr, L"The callback function became not valid. This is dangerous and shouldn't happen.");
+			FNERROR(CallbackErr, L"The callback function became not valid. This is dangerous and shouldn't happen.");
 			return;
 		}
 
@@ -193,7 +223,7 @@ void WinDriver::DriverComponent::CallbackFunction(DWORD Message, DWORD_PTR Arg1,
 		break;
 
 	case CALLBACK_THREAD:	// Send a message to a thread to notify the app
-		ReturnMessage = PostThreadMessage(this->Callback, Message, Arg1, Arg2);
+		ReturnMessage = PostThreadMessage((DWORD)(this->Callback), Message, Arg1, Arg2);
 		break;
 
 	case CALLBACK_WINDOW:	// Send a message to the app's main window
@@ -209,19 +239,19 @@ void WinDriver::DriverComponent::CallbackFunction(DWORD Message, DWORD_PTR Arg1,
 bool WinDriver::DriverComponent::SetDriverHandle(HDRVR Handle) {
 	// The app tried to initialize the driver with no pointer?
 	if (Handle == nullptr) {
-		DERROR(DrvErr, L"A null pointer has been passed to the function.", true);
+		NERROR(DrvErr, L"A null pointer has been passed to the function.", true);
 		return false;
 	}
 
 	// We already have the same pointer in memory.
 	if (this->DrvHandle == Handle) {
-		DLOG(DrvErr, L"We already have the handle stored in memory. The app has Alzheimer I guess?");
+		LOG(DrvErr, L"We already have the handle stored in memory. The app has Alzheimer I guess?");
 		return true;
 	}
 
 	// A pointer is already stored in the variable, UnSetDriverHandle hasn't been called
 	if (this->DrvHandle != nullptr) {
-		DERROR(DrvErr, L"DrvHandle has been set in a previous call and not freed.", false);
+		NERROR(DrvErr, L"DrvHandle has been set in a previous call and not freed.", false);
 		return false;
 	}
 
@@ -233,7 +263,7 @@ bool WinDriver::DriverComponent::SetDriverHandle(HDRVR Handle) {
 bool WinDriver::DriverComponent::UnsetDriverHandle() {
 	// Warn through stdout if the app is trying to free the driver twice
 	if (this->DrvHandle == nullptr)
-		DLOG(DrvErr, L"The application called UnsetDriverHandle even though there's no handle set. Bad design?");
+		LOG(DrvErr, L"The application called UnsetDriverHandle even though there's no handle set. Bad design?");
 
 	// Free the driver by setting the local variable to nullptr, then return true
 	this->DrvHandle = nullptr;
@@ -242,31 +272,14 @@ bool WinDriver::DriverComponent::UnsetDriverHandle() {
 
 bool WinDriver::DriverComponent::OpenDriver(MIDIOPENDESC* OpInfStruct, DWORD CallbackMode, DWORD_PTR CookedPlayerAddress) {
 	if (OpInfStruct->hMidi == nullptr) {
-		DERROR(DrvErr, L"No valid HMIDI pointer has been specified.", false);
+		NERROR(DrvErr, L"No valid HMIDI pointer has been specified.", false);
 		return false;
-	}
-
-	// Save the pointer's address to memory
-	this->WMMHandle = OpInfStruct->hMidi;
-
-	// Check if the app wants the driver to do callbacks
-	if (CallbackMode != CALLBACK_NULL) {
-		if (OpInfStruct->dwCallback != 0) {
-			this->Callback = OpInfStruct->dwCallback;
-			this->CallbackMode = CallbackMode;
-		}
-
-		// If callback mode is specified but no callback address is specified, abort the initialization
-		else {
-			DERROR(DrvErr, L"No memory address has been specified for the callback function.", false);
-			return false;
-		}
 	}
 
 	// Check if the app wants a cooked player
 	if (CallbackMode & MIDI_IO_COOKED) {
 		if (CookedPlayerAddress == NULL) {
-			DERROR(DrvErr, L"No memory address has been specified for the MIDI_IO_COOKED player.", false);
+			NERROR(DrvErr, L"No memory address has been specified for the MIDI_IO_COOKED player.", false);
 			return false;
 		}
 		// stub
@@ -278,9 +291,6 @@ bool WinDriver::DriverComponent::OpenDriver(MIDIOPENDESC* OpInfStruct, DWORD Cal
 
 bool WinDriver::DriverComponent::CloseDriver() {
 	// stub
-	this->CallbackFunction(MOM_CLOSE, NULL, NULL);
-	this->WMMHandle = nullptr;
-
 	return true;
 }
 

@@ -8,9 +8,10 @@ This file is useful only if you want to compile the driver under Windows, it's n
 
 #pragma once
 
-#include "WinDriver.hpp"
 #include "WinError.hpp"
-#include "BASSLib.hpp"
+#include "WinDriver.hpp"
+#include "WinSynthPipe.hpp"
+#include "WinVars.hpp"
 #include <devguid.h>
 #include <newdev.h>
 #include <setupapi.h>
