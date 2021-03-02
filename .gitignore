@@ -3,5 +3,8 @@ ShakraDrv/.vs/
 ShakraDrv/Debug/
 ShakraDrv/Release/
 ShakraDrv/x64/
+ShakraHost/.vs/
+ShakraHost/bin/
+ShakraHost/obj/
 *.vcxproj.filters
 *.vcxproj.user

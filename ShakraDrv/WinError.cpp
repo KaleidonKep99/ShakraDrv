@@ -24,17 +24,35 @@ void ErrorSystem::WinErr::Log(const wchar_t* Message, const wchar_t* Position, c
 }
 
 void ErrorSystem::WinErr::ThrowError(const wchar_t* Error, const wchar_t* Position, const wchar_t* File, const wchar_t* Line, bool IsSeriousError) {
-	wchar_t* Buf = new wchar_t[SZBufSize];
+	int GLE = GetLastError();
+	wchar_t* Buf = nullptr;
+	LPWSTR GLEBuf = nullptr;
 
+	if (!Error) {
+		size_t MsgBufSize = FormatMessageW(
+			FORMAT_MESSAGE_FROM_SYSTEM |
+			FORMAT_MESSAGE_IGNORE_INSERTS |
+			FORMAT_MESSAGE_ALLOCATE_BUFFER,
+			NULL, GLE,
+			MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+			(LPWSTR)&GLEBuf, 0, NULL);
+
+		MessageBox(NULL, GLEBuf, L"Shakra - Error", IsSeriousError ? MB_ICONERROR : MB_ICONWARNING | MB_OK | MB_SYSTEMMODAL);
+
+		LocalFree(GLEBuf);
+	}
+	else {
+		Buf = new wchar_t[SZBufSize];
 #ifdef _DEBUG
-	swprintf_s(Buf, BufSize, L"An error has occured in the \"%s\" function!\n\nFile: %s\nLine: %s\n\nError: %s", Position, File, Line, Error);
+		swprintf_s(Buf, BufSize, L"An error has occured in the \"%s\" function!\n\nFile: %s\nLine: %s\n\nError: %s", Position, File, Line, Error);
 #else
-	swprintf_s(Buf, BufSize, L"An error has occured in the \"%s\" function!\n\nError: %s", Position, Error);
+		swprintf_s(Buf, BufSize, L"An error has occured in the \"%s\" function!\n\nError: %s", Position, Error);
 #endif
 
-	MessageBox(NULL, Buf, L"Shakra - Error", IsSeriousError ? MB_ICONERROR : MB_ICONWARNING | MB_OK | MB_SYSTEMMODAL);
+		MessageBox(NULL, Buf, L"Shakra - Error", IsSeriousError ? MB_ICONERROR : MB_ICONWARNING | MB_OK | MB_SYSTEMMODAL);
 
-	delete[] Buf;
+		delete[] Buf;
+	}
 }
 
 void ErrorSystem::WinErr::ThrowFatalError(const wchar_t* Error) {
@@ -46,7 +64,7 @@ void ErrorSystem::WinErr::ThrowFatalError(const wchar_t* Error) {
 
 	delete[] Buf;
 
-	throw (int)(-1);
+	throw ::GetLastError();
 }
 
 #endif

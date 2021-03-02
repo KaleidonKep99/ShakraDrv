@@ -4,3 +4,9 @@ EXPORTS
 	DriverProc
 	DriverRegistration
 	modMessage
+	SH_CP
+	SH_PSE
+	SH_RRHIN
+	SH_GRHP
+	SH_GWHP
+	SH_BC

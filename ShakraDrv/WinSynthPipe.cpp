@@ -9,66 +9,184 @@ This file is useful only if you want to compile the driver under Windows, it's n
 
 #include "WinSynthPipe.hpp"
 
+bool WinDriver::SynthPipe::PrepareArrays() {
+	// If the pipes haven't been initialized, do it now
+	if (!PDrvEvBuf)
+	{
+		PDrvEvBuf = new (std::nothrow) HANDLE[MAX_DRIVERS];
+
+		if (!PDrvEvBuf) {
+			NERROR(SynthErr, L"Failed to allocate pipe handles.", false);
+			return false;
+		}
+	}
+
+	if (!PDrvEvBufHeads)
+	{
+		PDrvEvBufHeads = new (std::nothrow) HANDLE[MAX_DRIVERS];
+
+		if (!PDrvEvBufHeads) {
+			NERROR(SynthErr, L"Failed to allocate buffer handles.", false);
+			return false;
+		}
+	}
+
+	// If the buffer hasn't been initialized, do it now
+	if (!DrvEvBuf) {
+		DrvEvBuf = new (std::nothrow) DWORD * [EvBufSize];
+
+		if (!DrvEvBuf) {
+			NERROR(SynthErr, L"Failed to allocate events buffer.", false);
+			return false;
+		}
+	}
+
+	if (!DrvEvBufHeads)
+	{
+		DrvEvBufHeads = new (std::nothrow) PEvBufHeads[MAX_DRIVERS];
+
+		if (!DrvEvBufHeads) {
+			NERROR(SynthErr, L"Failed to allocate heads for the buffer.", false);
+			return false;
+		}
+	}
+
+	return true;
+}
+
+bool WinDriver::SynthPipe::CreatePipe(unsigned short PipeID, int Size) {
+	wchar_t PipeNameH[32] = { 0 };
+	wchar_t PipeNameD[32] = { 0 };
+
+	// Check if the pipe ID is valid
+	if (PipeID > MAX_DRIVERS) {
+		return false;
+	}
+
+	// Prepare arrays if they're not allocated yet
+	if (PrepareArrays()) {
+		// Check if size is valid
+		if (Size < 0 || Size > 2147483647) {
+			EvBufSize = 4096;
+		}
+		else EvBufSize = Size;
+
+		// Prepare the path to the pipe
+		swprintf_s(PipeNameH, 32, PipeNameTemplate, L"Heads", PipeID);
+		swprintf_s(PipeNameD, 32, PipeNameTemplate, L"Data", PipeID);
+
+		// Initialize buffer
+		PDrvEvBuf[PipeID] = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, sizeof(DWORD) * EvBufSize, PipeNameD);
+		if (PDrvEvBuf[PipeID]) {
+			DrvEvBuf[PipeID] = new DWORD[EvBufSize];
+
+			SetNamedSecurityInfo(PipeNameD, SE_KERNEL_OBJECT, DACL_SECURITY_INFORMATION, 0, 0, (PACL)NULL, NULL);
+			DrvEvBuf[PipeID] = (DWORD*)MapViewOfFile(PDrvEvBuf[PipeID], FILE_MAP_ALL_ACCESS, 0, 0, 0);
+
+			if (DrvEvBuf[PipeID] == nullptr)
+			{
+				NERROR(SynthErr, nullptr, false);
+				return false;
+			}
+
+			LOG(SynthErr, L"MapViewOfFile has successfully allocated DrvEvBuf.");
+		}
+
+		// Initialize buffer heads
+		PDrvEvBufHeads[PipeID] = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, sizeof(EvBufHeads), PipeNameH);
+		if (PDrvEvBufHeads[PipeID]) {
+			SetNamedSecurityInfo(PipeNameH, SE_KERNEL_OBJECT, DACL_SECURITY_INFORMATION, 0, 0, (PACL)NULL, NULL);
+			DrvEvBufHeads[PipeID] = (PEvBufHeads)MapViewOfFile(PDrvEvBufHeads[PipeID], FILE_MAP_ALL_ACCESS, 0, 0, 0);
+
+			if (DrvEvBufHeads[PipeID] == nullptr)
+			{
+				NERROR(SynthErr, nullptr, false);
+				return false;
+			}
+
+			LOG(SynthErr, L"MapViewOfFile has successfully allocated PDrvEvBufHeads.");
+		}
+
+		return true;
+	}
+
+	NERROR(SynthErr, nullptr, false);
+	return false;
+}
+
 bool WinDriver::SynthPipe::OpenPipe(unsigned short PipeID) {
-	wchar_t PipeName[32] = { 0 };
-	DWORD PipeDW = PIPE_READMODE_MESSAGE;
+	wchar_t PipeNameH[32] = { 0 };
+	wchar_t PipeNameD[32] = { 0 };
 
 	// Check if the pipe ID is valid
 	if (PipeID < 0 || PipeID > MAX_DRIVERS) {
 		return false;
 	}
 
-	// If the pipes haven't been initialized, do it now
-	if (!DrvPipes)
-	{
-		DrvPipes = new (std::nothrow) HANDLE[MAX_DRIVERS];
+	// Prepare arrays if they're not allocated yet
+	if (PrepareArrays()) {
+		// Prepare the path to the pipe
+		swprintf_s(PipeNameH, 32, PipeNameTemplate, L"Heads", PipeID);
+		swprintf_s(PipeNameD, 32, PipeNameTemplate, L"Data", PipeID);
 
-		if (!DrvPipes) {
-			NERROR(SynthErr, L"Failed to allocate pipe handles.", false);
-			return false;
-		}
-	}
+		// Initialize buffer
+		PDrvEvBuf[PipeID] = OpenFileMapping(FILE_MAP_ALL_ACCESS, FALSE, PipeNameD);
+		if (PDrvEvBuf[PipeID]) {
+			DrvEvBuf[PipeID] = new DWORD[EvBufSize];
 
-	// Prepare the path to the pipe
-	swprintf_s(PipeName, 32, PipeNameTemplate, PipeID);
+			SetNamedSecurityInfo(PipeNameD, SE_KERNEL_OBJECT, DACL_SECURITY_INFORMATION, 0, 0, (PACL)NULL, NULL);
+			DrvEvBuf[PipeID] = (DWORD*)MapViewOfFile(PDrvEvBuf[PipeID], FILE_MAP_ALL_ACCESS, 0, 0, 0);
 
-	for (;;) {
-		// Open the pipe
-		DrvPipes[PipeID] = CreateFile(PipeName, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+			if (DrvEvBuf[PipeID] == nullptr)
+			{
+				NERROR(SynthErr, nullptr, false);
+				return false;
+			}
 
-		if (DrvPipes[PipeID] != INVALID_HANDLE_VALUE)
-			break;
-
-		// If the pipe is busy, quit
-		if (GetLastError() != ERROR_PIPE_BUSY) {
-			NERROR(SynthErr, L"Failed to open pipe as client.", false);
-			return false;
+			LOG(SynthErr, L"MapViewOfFile has successfully allocated DrvEvBuf.");
 		}
 
-		// All pipe instances are busy, so wait for 20 seconds. 
+		// Initialize buffer heads
+		PDrvEvBufHeads[PipeID] = OpenFileMapping(FILE_MAP_ALL_ACCESS, FALSE, PipeNameH);
+		if (PDrvEvBufHeads[PipeID]) {
+			SetNamedSecurityInfo(PipeNameH, SE_KERNEL_OBJECT, DACL_SECURITY_INFORMATION, 0, 0, (PACL)NULL, NULL);
+			DrvEvBufHeads[PipeID] = (PEvBufHeads)MapViewOfFile(PDrvEvBufHeads[PipeID], FILE_MAP_ALL_ACCESS, 0, 0, 0);
 
-		if (!WaitNamedPipe(PipeName, 15000)) {
-			NERROR(SynthErr, L"Could not open pipe as a client after 15 seconds of wait time.", false);
-			return false;
+			if (DrvEvBufHeads[PipeID] == nullptr)
+			{
+				NERROR(SynthErr, nullptr, false);
+				return false;
+			}
+
+			LOG(SynthErr, L"MapViewOfFile has successfully allocated PDrvEvBufHeads.");
 		}
+
+		return true;
 	}
 
-	if (!SetNamedPipeHandleState(DrvPipes[PipeID], &PipeDW, NULL, NULL)) {
-		NERROR(SynthErr, L"SetNamedPipeHandleState failed.", false);
-		return false;
-	}
-
-	return true;
+	NERROR(SynthErr, nullptr, false);
+	return false;
 }
 
 bool WinDriver::SynthPipe::ClosePipe(unsigned short PipeID) {
-	if (!DrvPipes) {
+	if (!PDrvEvBufHeads && !PDrvEvBuf) {
 		LOG(SynthErr, L"ClosePipe() called with no pipes allocated.");
 		return true;
 	}
 
-	if (CloseHandle(DrvPipes[PipeID])) {
-		DrvPipes[PipeID] = nullptr;
+	if (PDrvEvBuf[PipeID]) {
+		delete[] DrvEvBuf[PipeID];
+		UnmapViewOfFile(DrvEvBuf[PipeID]);
+	}
+
+	if (PDrvEvBufHeads[PipeID]) {
+		delete[] DrvEvBufHeads[PipeID];
+		UnmapViewOfFile(DrvEvBuf[PipeID]);
+	}
+
+	if (CloseHandle(PDrvEvBuf[PipeID]) &&
+		CloseHandle(PDrvEvBufHeads[PipeID])) {
+		PDrvEvBuf[PipeID] = nullptr;
 		return true;
 	}
 
@@ -76,22 +194,60 @@ bool WinDriver::SynthPipe::ClosePipe(unsigned short PipeID) {
 	return false;
 }
 
-void WinDriver::SynthPipe::ParseShortEvent(unsigned short PipeID, unsigned int Event) {
-	DWORD Dummy = 0;
-
-	if (DrvPipes[PipeID])
-		WriteFile(DrvPipes[PipeID], &Event, sizeof(unsigned int), &Dummy, NULL);
+bool WinDriver::SynthPipe::PerformBufferCheck(unsigned short PipeID) {
+	return (DrvEvBufHeads[PipeID]->ReadHead != DrvEvBufHeads[PipeID]->WriteHead);
 }
 
-void WinDriver::SynthPipe::ParseLongEvent(unsigned short PipeID, LPMIDIHDR Event) {
+void WinDriver::SynthPipe::ResetReadHeadIfNeeded(unsigned short PipeID) {
+	if (++DrvEvBufHeads[PipeID]->ReadHead >= EvBufSize)
+		DrvEvBufHeads[PipeID]->ReadHead = 0;
+}
+
+int WinDriver::SynthPipe::GetReadHeadPos(unsigned short PipeID) {
+	return DrvEvBufHeads[PipeID]->ReadHead;
+}
+
+int WinDriver::SynthPipe::GetWriteHeadPos(unsigned short PipeID) {
+	return DrvEvBufHeads[PipeID]->WriteHead;
+}
+
+unsigned int WinDriver::SynthPipe::ParseShortEvent(unsigned short PipeID) {
+	return DrvEvBuf[PipeID][DrvEvBufHeads[PipeID]->ReadHead];
+}
+
+void WinDriver::SynthPipe::SaveShortEvent(unsigned short PipeID, unsigned int Event) {
+	if (!DrvEvBuf[PipeID])
+		return;
+
+	auto NextWriteHead = DrvEvBufHeads[PipeID]->WriteHead + 1;
+	if (NextWriteHead >= EvBufSize) NextWriteHead = 0;
+
+	DrvEvBuf[PipeID][DrvEvBufHeads[PipeID]->WriteHead] = Event;
+
+	if (NextWriteHead != DrvEvBufHeads[PipeID]->ReadHead)
+		DrvEvBufHeads[PipeID]->WriteHead = NextWriteHead;
+}
+
+void WinDriver::SynthPipe::SaveLongEvent(unsigned short PipeID, MIDIHDR* Event) {
+	// STUB
+	return;
+
 	DWORD Dummy = 0;
 
-	if (DrvPipes[PipeID])
-		WriteFile(DrvPipes[PipeID], Event, sizeof(LPMIDIHDR), &Dummy, NULL);
+	if (DrvEvBuf[PipeID])
+	{
+		Event->dwFlags &= ~MHDR_DONE;
+		Event->dwFlags |= MHDR_INQUEUE;
+
+		WriteFile(DrvEvBuf[PipeID], Event->lpData, Event->dwBytesRecorded, &Dummy, NULL);
+
+		Event->dwFlags &= ~MHDR_INQUEUE;
+		Event->dwFlags |= MHDR_DONE;
+	}
 }
 
 
-unsigned int WinDriver::SynthPipe::PrepareLongEvent(LPMIDIHDR Event) {
+unsigned int WinDriver::SynthPipe::PrepareLongEvent(MIDIHDR* Event) {
 	if (!Event) {
 		NERROR(SynthErr, L"The MIDIHDR buffer doesn't exist, or hasn't been allocated by the host application.", false);
 		return MMSYSERR_INVALPARAM;
@@ -109,7 +265,7 @@ unsigned int WinDriver::SynthPipe::PrepareLongEvent(LPMIDIHDR Event) {
 	return MMSYSERR_NOERROR;
 }
 
-unsigned int WinDriver::SynthPipe::UnprepareLongEvent(LPMIDIHDR Event) {
+unsigned int WinDriver::SynthPipe::UnprepareLongEvent(MIDIHDR* Event) {
 	if (!Event) {
 		NERROR(SynthErr, L"The MIDIHDR buffer doesn't exist, or hasn't been allocated by the host application.", false);
 		return MMSYSERR_INVALPARAM;

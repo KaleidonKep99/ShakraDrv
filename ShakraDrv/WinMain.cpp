@@ -73,7 +73,16 @@ void DriverRegistration(HWND HWND, LPSTR CommandLine, bool CmdShow) {
 	bool Registration = (_stricmp(CommandLine, "RegisterDrv") == 0), UnregisterPass = false;
 
 	// Used for registration
-	HKEY DeviceRegKey, DriverSubKey, DriversSubKey, Drivers32Key, DriversWOW64Key;
+	HKEY	DeviceRegKey,
+			DriverSubKey,
+			DriversSubKey,
+#ifdef _WIN64
+			Drivers32Key,
+			DriversWOW64Key;
+#else
+			Drivers32Key;
+#endif
+
 	HDEVINFO DeviceInfo;
 	SP_DEVINFO_DATA DeviceInfoData;
 	wchar_t szBuffer[4096];
@@ -475,22 +484,20 @@ unsigned int modMessage(UINT DeviceIdentifier, UINT Message, DWORD_PTR DriverAdd
 
 	switch (Message) {
 	case MODM_DATA:
-		SynthSys.ParseShortEvent(DeviceIdentifier, (DWORD)Param1);
+		SynthSys.SaveShortEvent(DeviceIdentifier, (DWORD)Param1);
 		return MMSYSERR_NOERROR;
 
 	case MODM_LONGDATA:
-		SynthSys.ParseLongEvent(DeviceIdentifier, reinterpret_cast<LPMIDIHDR>(Param1));
+		SynthSys.SaveLongEvent(DeviceIdentifier, (MIDIHDR*)Param1);
 		DriverAppCallback[DeviceIdentifier].CallbackFunction(MOM_DONE, Param1, 0);
 		return MMSYSERR_NOERROR;
 
 	case MODM_PREPARE:
-		modM = SynthSys.PrepareLongEvent(reinterpret_cast<LPMIDIHDR>(Param1));
-		DriverAppCallback[DeviceIdentifier].CallbackFunction(MOM_DONE, Param1, 0);
+		modM = SynthSys.PrepareLongEvent((MIDIHDR*)Param1);
 		return MMSYSERR_NOERROR;
 
 	case MODM_UNPREPARE:
-		modM = SynthSys.UnprepareLongEvent(reinterpret_cast<LPMIDIHDR>(Param1));
-		DriverAppCallback[DeviceIdentifier].CallbackFunction(MOM_DONE, Param1, 0);
+		modM = SynthSys.UnprepareLongEvent((MIDIHDR*)Param1);
 		return MMSYSERR_NOERROR;
 
 	case MODM_RESET:
@@ -504,7 +511,7 @@ unsigned int modMessage(UINT DeviceIdentifier, UINT Message, DWORD_PTR DriverAdd
 			// Driver is busy in MODM_OPEN, reject any other MODM_OPEN/MODM_CLOSE call for the time being
 			DriverBusy = true;
 
-			if (SynthSys.OpenPipe(DeviceIdentifier)) {
+			if (!SynthSys.OpenPipe(DeviceIdentifier)) {
 				// Something went wrong, the driver failed to open
 				DriverComponent.CloseDriver();
 				return MMSYSERR_ERROR;
@@ -552,4 +559,32 @@ unsigned int modMessage(UINT DeviceIdentifier, UINT Message, DWORD_PTR DriverAdd
 	default:
 		return MMSYSERR_ERROR;
 	}
+}
+
+//
+// USED INTERNALLY BY SHAKRA HOST
+//
+
+bool __stdcall SH_CP(unsigned short PipeID, int Size) {
+	return SynthSys.CreatePipe(PipeID, Size);
+}
+
+unsigned int __stdcall SH_PSE(unsigned short PipeID) {
+	return SynthSys.ParseShortEvent(PipeID);
+}
+
+void __stdcall SH_RRHIN(unsigned short PipeID) {
+	return SynthSys.ResetReadHeadIfNeeded(PipeID);
+}
+
+int __stdcall SH_GRHP(unsigned short PipeID) {
+	return SynthSys.GetReadHeadPos(PipeID);
+}
+
+int __stdcall SH_GWHP(unsigned short PipeID) {
+	return SynthSys.GetWriteHeadPos(PipeID);
+}
+
+bool __stdcall SH_BC(unsigned short PipeID) {
+	return SynthSys.PerformBufferCheck(PipeID);
 }

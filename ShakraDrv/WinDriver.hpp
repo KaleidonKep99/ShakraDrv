@@ -70,7 +70,7 @@ namespace WinDriver {
 		// Callbacks
 		bool PrepareCallbackFunction(MIDIOPENDESC*);
 		bool ClearCallbackFunction();
-		void CallbackFunction(DWORD, DWORD_PTR, DWORD_PTR);
+		void CallbackFunction(DWORD, DWORD, DWORD);
 
 	};
 

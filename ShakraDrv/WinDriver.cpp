@@ -197,25 +197,15 @@ bool WinDriver::DriverCallback::ClearCallbackFunction() {
 	return true;
 }
 
-void WinDriver::DriverCallback::CallbackFunction(DWORD Message, DWORD_PTR Arg1, DWORD_PTR Arg2) {
+void WinDriver::DriverCallback::CallbackFunction(DWORD Message, DWORD Arg1, DWORD Arg2) {
 	WMMC Callback = nullptr;
 	int ReturnMessage = 0;
 
 	switch (this->CallbackMode & CALLBACK_TYPEMASK) {
 
 	case CALLBACK_FUNCTION:	// Use a custom function to notify the app
-		// Prepare the custom callback
-		Callback = (*(WMMC)(this->Callback));
-
-		// It doesn't exist! Not good!
-		if (*Callback == nullptr)
-		{
-			FNERROR(CallbackErr, L"The callback function became not valid. This is dangerous and shouldn't happen.");
-			return;
-		}
-
-		// It's alive, use the app's custom function to send the callback
-		Callback((HMIDIOUT)(this->WMMHandle), Message, this->Instance, Arg1, Arg2);
+		// Use the app's custom function to send the callback
+		(*(WMMC)this->Callback)((HMIDIOUT)(this->WMMHandle), Message, this->Instance, Arg1, Arg2);
 		break;
 
 	case CALLBACK_EVENT:	// Set an event to notify the app
