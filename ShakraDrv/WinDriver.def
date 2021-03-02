@@ -6,6 +6,7 @@ EXPORTS
 	modMessage
 	SH_CP
 	SH_PSE
+	SH_PLE
 	SH_RRHIN
 	SH_GRHP
 	SH_GWHP

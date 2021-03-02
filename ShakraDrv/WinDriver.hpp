@@ -68,7 +68,7 @@ namespace WinDriver {
 
 	public:
 		// Callbacks
-		bool PrepareCallbackFunction(MIDIOPENDESC*);
+		bool PrepareCallbackFunction(MIDIOPENDESC*, DWORD);
 		bool ClearCallbackFunction();
 		void CallbackFunction(DWORD, DWORD, DWORD);
 

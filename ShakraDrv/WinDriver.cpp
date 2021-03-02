@@ -167,15 +167,16 @@ unsigned long WinDriver::DriverMask::GiveCaps(PVOID CapsPointer, DWORD CapsSize)
 	return MMSYSERR_NOERROR;
 }
 
-bool WinDriver::DriverCallback::PrepareCallbackFunction(MIDIOPENDESC* OpInfStruct) {
+bool WinDriver::DriverCallback::PrepareCallbackFunction(MIDIOPENDESC* OpInfStruct, DWORD CallbackMode) {
 	// Save the pointer's address to memory
 	this->WMMHandle = OpInfStruct->hMidi;
 
 	// Check if the app wants the driver to do callbacks
-	if (this->CallbackMode != CALLBACK_NULL) {
+	if (CallbackMode != CALLBACK_NULL) {
 		if (OpInfStruct->dwCallback != 0) {
 			this->Callback = OpInfStruct->dwCallback;
 			this->CallbackMode = CallbackMode;
+			this->Instance = OpInfStruct->dwInstance;
 		}
 
 		// If callback mode is specified but no callback address is specified, abort the initialization

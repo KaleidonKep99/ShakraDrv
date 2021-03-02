@@ -69,6 +69,9 @@ namespace ShakraHost
         [DllImport("shakra.dll", SetLastError = true, EntryPoint = "SH_PSE", CallingConvention = CallingConvention.StdCall)]
         public static extern uint ParseShortEvent(ushort Pipe);
 
+        [DllImport("shakra.dll", SetLastError = true, EntryPoint = "SH_PLE", CallingConvention = CallingConvention.StdCall)]
+        public static extern int ParseLongEvent(ushort Pipe, [MarshalAs(UnmanagedType.LPStr)] ref string IIMidiHdr);
+
         [DllImport("shakra.dll", SetLastError = true, EntryPoint = "SH_RRHIN", CallingConvention = CallingConvention.StdCall)]
         public static extern void ResetReadHeadIfNeeded(ushort Pipe);
 
@@ -101,6 +104,7 @@ namespace ShakraHost
         static extern bool NtDelayExecution(in bool Alertable, in Int64 DelayInterval);
 
         PipesData[] Pipes = new PipesData[4];
+        DispatcherTimer DTimer = new DispatcherTimer();
 
         public void Test()
         {
@@ -113,7 +117,6 @@ namespace ShakraHost
         {
             InitializeComponent();
 
-            Console.SetOut(new ControlWriter(ConsoleOutput));
             MessageBox.Show("waiting");
 
             try
@@ -130,6 +133,9 @@ namespace ShakraHost
                         Pipes[i].BASST = new Thread(BASSThread);
                         Pipes[i].BASST.Start(Pipes[i]);
                     }
+
+                    DTimer.Tick += DTimerTick;
+                    DTimer.Interval = new TimeSpan(0, 0, 0, 0, 10);
                 }
             }
             catch (Exception ex)
@@ -138,16 +144,30 @@ namespace ShakraHost
             }
         }
 
-        private void BASSThread(object Pipe)
+        private void DTimerTick(object sender, EventArgs e)
+        {
+            RH.Content = String.Format("RH: {0}", ShakraDLL.GetReadHeadPos(0));
+            WH.Content = String.Format("WH: {0}", ShakraDLL.GetWriteHeadPos(0));
+            CurBuf.Content = String.Format("CurBuf: {0:X8}", ShakraDLL.ParseShortEvent(0));
+        }
+
+        private unsafe void BASSThread(object Pipe)
         {
             try
             {
                 PipesData TPipe = (PipesData)Pipe;
                 uint Event = 0;
-                byte[] EventBuf;
+
+                // Long event
+                int LESize = 0;
+                string LEvent = null;
+
+                BASS_MIDI_EVENT BEvent = new BASS_MIDI_EVENT { };
 
                 TPipe.SF = new BASS_MIDI_FONT[1];
                 TPipe.SF[0].font = BassMidi.BASS_MIDI_FontInit("test.sf2");
+                TPipe.SF[0].preset = -1;
+                TPipe.SF[0].bank = 0;
 
                 Bass.BASS_SetConfig(BASSConfig.BASS_CONFIG_UPDATEPERIOD, 5);
                 Bass.BASS_SetConfig(BASSConfig.BASS_CONFIG_UPDATETHREADS, 4);
@@ -160,6 +180,7 @@ namespace ShakraHost
                 Bass.BASS_ChannelPlay(TPipe.Handle, false);
 
                 ShakraDLL.CreatePipe(TPipe.PipeID, 4096);
+                DTimer.Start();
 
                 while (true)
                 {
@@ -168,47 +189,19 @@ namespace ShakraHost
                     if (!ShakraDLL.PerformBufferCheck(TPipe.PipeID))
                         continue;
 
-                    do
+                    LESize = ShakraDLL.ParseLongEvent(TPipe.PipeID, ref LEvent);
+                    if (LESize != -1 && LEvent != null)
                     {
-                        int Length = 3;
+                        BassMidi.BASS_MIDI_StreamEvents(TPipe.Handle, BASSMIDIEventMode.BASS_MIDI_EVENTS_RAW, 0, IntPtr.Parse(LEvent), LESize);
+                    }
+
+                    do
+                    {             
                         Event = ShakraDLL.ParseShortEvent(TPipe.PipeID);
                         ShakraDLL.ResetReadHeadIfNeeded(TPipe.PipeID);
 
-                        switch (Event & 0xF0)
-                        {
-                            case 0x90:
-                                BassMidi.BASS_MIDI_StreamEvent(TPipe.Handle, (int)(Event & 0xF), BASSMIDIEvent.MIDI_EVENT_NOTE, (int)(Event >> 8));
-                                break;
+                        BassMidi.BASS_MIDI_StreamEvents(TPipe.Handle, BASSMIDIEventMode.BASS_MIDI_EVENTS_RAW, 0, (IntPtr)(&Event), 3);
 
-                            case 0x80:
-                                BassMidi.BASS_MIDI_StreamEvent(TPipe.Handle, (int)(Event & 0xF), BASSMIDIEvent.MIDI_EVENT_NOTE, (int)((Event & 0xFFFF00) >> 8));
-                                break;
-
-                            default:
-                                if (((Event - 0x80) & 0xC0) == 0)
-                                {
-                                    EventBuf = new byte[] { (byte)Event, (byte)(Event >> 8), (byte)(Event >> 16), (byte)(Event >> 24) };
-                                    BassMidi.BASS_MIDI_StreamEvents(TPipe.Handle, BASSMIDIEventMode.BASS_MIDI_EVENTS_RAW, 0, EventBuf);
-                                    break;
-                                }
-
-                                if (((Event - 0x80) & 0xC0) == 0) Length = 2;
-                                else if ((Event & 0xF0) == 0xF0)
-                                {
-                                    switch (Event & 0xF)
-                                    {
-                                        case 3:
-                                            Length = 2;
-                                            break;
-                                        default:
-                                            continue;
-                                    }
-                                }
-
-                                EventBuf = new byte[] { 0, (byte)(Event >> 8), (byte)(Event >> 16), (byte)(Event >> 24) };
-                                BassMidi.BASS_MIDI_StreamEvents(TPipe.Handle, BASSMIDIEventMode.BASS_MIDI_EVENTS_RAW, 0, EventBuf);
-                                break;
-                        }
                     } while (ShakraDLL.PerformBufferCheck(TPipe.PipeID));
                 }
             }

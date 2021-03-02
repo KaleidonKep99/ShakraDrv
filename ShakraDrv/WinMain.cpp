@@ -517,7 +517,7 @@ unsigned int modMessage(UINT DeviceIdentifier, UINT Message, DWORD_PTR DriverAdd
 				return MMSYSERR_ERROR;
 			}
 
-			DriverAppCallback[DeviceIdentifier].PrepareCallbackFunction((LPMIDIOPENDESC)Param1);
+			DriverAppCallback[DeviceIdentifier].PrepareCallbackFunction((LPMIDIOPENDESC)Param1, (DWORD)Param2);
 			DriverAppCallback[DeviceIdentifier].CallbackFunction(MOM_OPEN, 0, 0);
 
 			LOG(DrvErr, L"The driver has been opened.");
@@ -571,6 +571,10 @@ bool __stdcall SH_CP(unsigned short PipeID, int Size) {
 
 unsigned int __stdcall SH_PSE(unsigned short PipeID) {
 	return SynthSys.ParseShortEvent(PipeID);
+}
+
+int __stdcall SH_PLE(unsigned short PipeID, LPSTR* IIMidiHdr) {
+	return SynthSys.ParseLongEvent(PipeID, IIMidiHdr);
 }
 
 void __stdcall SH_RRHIN(unsigned short PipeID) {

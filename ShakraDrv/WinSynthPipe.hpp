@@ -15,6 +15,8 @@ This file is useful only if you want to compile the driver under Windows, it's n
 #include "WinError.hpp"
 #include "WinVars.hpp"
 #include <windows.h>
+#include <ShlObj_core.h>
+#include <tlhelp32.h>
 #include <mmddk.h>
 #include <AclAPI.h>
 #include <new>
@@ -23,7 +25,7 @@ This file is useful only if you want to compile the driver under Windows, it's n
 typedef struct {
 	volatile int ReadHead;
 	volatile int WriteHead;
-} EvBufHeads, *PEvBufHeads, EBH, *PEBH;
+} EvBufHeads, * PEvBufHeads, EBH, * PEBH;
 
 namespace WinDriver {
 	class SynthPipe {
@@ -32,14 +34,17 @@ namespace WinDriver {
 		ErrorSystem::WinErr SynthErr;
 		int EvBufSize = 4096;
 		HANDLE* PDrvEvBufHeads = nullptr;
+		HANDLE* PDrvLongEvBuf = nullptr;
 		HANDLE* PDrvEvBuf = nullptr;
 
 		// EvBuf
 		EvBufHeads** DrvEvBufHeads = nullptr;
+		MIDIHDR** DrvLongEvBuf;
 		DWORD** DrvEvBuf;
 		bool PrepareArrays();
 
 	public:
+		bool OpenSynthHost();
 		bool CreatePipe(unsigned short PipeID, int Size);
 		bool OpenPipe(unsigned short PipeID);
 		bool ClosePipe(unsigned short PipeID);
@@ -48,6 +53,7 @@ namespace WinDriver {
 		int GetReadHeadPos(unsigned short PipeID);
 		int GetWriteHeadPos(unsigned short PipeID);
 		unsigned int ParseShortEvent(unsigned short PipeID);
+		int ParseLongEvent(unsigned short PipeID, LPSTR* IIMidiHdr);
 		void SaveShortEvent(unsigned short PipeID, unsigned int Event);
 		void SaveLongEvent(unsigned short PipeID, LPMIDIHDR Event);
 		unsigned int PrepareLongEvent(LPMIDIHDR Event);
