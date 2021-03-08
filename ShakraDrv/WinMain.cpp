@@ -488,17 +488,17 @@ unsigned int modMessage(UINT DeviceIdentifier, UINT Message, DWORD_PTR DriverAdd
 		return MMSYSERR_NOERROR;
 
 	case MODM_LONGDATA:
-		SynthSys.SaveLongEvent(DeviceIdentifier, (MIDIHDR*)Param1);
+		modM = SynthSys.SaveLongEvent(DeviceIdentifier, (MIDIHDR*)Param1);
 		DriverAppCallback[DeviceIdentifier].CallbackFunction(MOM_DONE, Param1, 0);
-		return MMSYSERR_NOERROR;
+		return modM;
 
 	case MODM_PREPARE:
-		modM = SynthSys.PrepareLongEvent((MIDIHDR*)Param1);
-		return MMSYSERR_NOERROR;
+		modM = SynthSys.PrepareLongEvent(DeviceIdentifier, (MIDIHDR*)Param1);
+		return modM;
 
 	case MODM_UNPREPARE:
-		modM = SynthSys.UnprepareLongEvent((MIDIHDR*)Param1);
-		return MMSYSERR_NOERROR;
+		modM = SynthSys.UnprepareLongEvent(DeviceIdentifier, (MIDIHDR*)Param1);
+		return modM;
 
 	case MODM_RESET:
 	case MODM_GETVOLUME:
@@ -511,16 +511,15 @@ unsigned int modMessage(UINT DeviceIdentifier, UINT Message, DWORD_PTR DriverAdd
 			// Driver is busy in MODM_OPEN, reject any other MODM_OPEN/MODM_CLOSE call for the time being
 			DriverBusy = true;
 
-			if (!SynthSys.OpenPipe(DeviceIdentifier)) {
+			if (!SynthSys.PrepareFileMappings(DeviceIdentifier, false, 0)) {
 				// Something went wrong, the driver failed to open
+				NERROR(DrvErr, L"Failed to open driver.", false);
 				DriverComponent.CloseDriver();
 				return MMSYSERR_ERROR;
 			}
 
 			DriverAppCallback[DeviceIdentifier].PrepareCallbackFunction((LPMIDIOPENDESC)Param1, (DWORD)Param2);
 			DriverAppCallback[DeviceIdentifier].CallbackFunction(MOM_OPEN, 0, 0);
-
-			LOG(DrvErr, L"The driver has been opened.");
 
 			DriverBusy = false;
 			return MMSYSERR_NOERROR;
@@ -541,7 +540,6 @@ unsigned int modMessage(UINT DeviceIdentifier, UINT Message, DWORD_PTR DriverAdd
 		DriverAppCallback[DeviceIdentifier].CallbackFunction(MOM_CLOSE, NULL, NULL);
 		DriverAppCallback[DeviceIdentifier].ClearCallbackFunction();
 
-		LOG(DrvErr, L"The driver has been closed.");
 		return MMSYSERR_NOERROR;
 
 	case MODM_GETNUMDEVS:
@@ -565,30 +563,30 @@ unsigned int modMessage(UINT DeviceIdentifier, UINT Message, DWORD_PTR DriverAdd
 // USED INTERNALLY BY SHAKRA HOST
 //
 
-bool __stdcall SH_CP(unsigned short PipeID, int Size) {
-	return SynthSys.CreatePipe(PipeID, Size);
+bool WINAPI SH_CP(unsigned short PipeID, int Size) {
+	return SynthSys.PrepareFileMappings(PipeID, true, Size);
 }
 
-unsigned int __stdcall SH_PSE(unsigned short PipeID) {
+unsigned int WINAPI SH_PSE(unsigned short PipeID) {
 	return SynthSys.ParseShortEvent(PipeID);
 }
 
-int __stdcall SH_PLE(unsigned short PipeID, LPSTR* IIMidiHdr) {
-	return SynthSys.ParseLongEvent(PipeID, IIMidiHdr);
+unsigned int WINAPI SH_PLE(unsigned short PipeID, BYTE* PEvent) {
+	return SynthSys.ParseLongEvent(PipeID, PEvent);
 }
 
-void __stdcall SH_RRHIN(unsigned short PipeID) {
-	return SynthSys.ResetReadHeadIfNeeded(PipeID);
+void WINAPI SH_RRHIN(unsigned short PipeID) {
+	SynthSys.ResetReadHeadsIfNeeded(PipeID);
 }
 
-int __stdcall SH_GRHP(unsigned short PipeID) {
-	return SynthSys.GetReadHeadPos(PipeID);
+void WINAPI SH_GRHP(unsigned short PipeID, int *SRH, int *LRH) {
+	SynthSys.GetReadHeadPos(PipeID, SRH, LRH);
 }
 
-int __stdcall SH_GWHP(unsigned short PipeID) {
-	return SynthSys.GetWriteHeadPos(PipeID);
+void WINAPI SH_GWHP(unsigned short PipeID, int* SWH, int* LWH) {
+	SynthSys.GetWriteHeadPos(PipeID, SWH, LWH);
 }
 
-bool __stdcall SH_BC(unsigned short PipeID) {
+bool WINAPI SH_BC(unsigned short PipeID) {
 	return SynthSys.PerformBufferCheck(PipeID);
 }

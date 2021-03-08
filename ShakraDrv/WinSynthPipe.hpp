@@ -19,45 +19,70 @@ This file is useful only if you want to compile the driver under Windows, it's n
 #include <tlhelp32.h>
 #include <mmddk.h>
 #include <AclAPI.h>
+#include <iostream>
+#include <string>
+#include <sstream>
+#include <vector>
+
 #include <new>
 #include <cstdio>
 
 typedef struct {
-	volatile int ReadHead;
-	volatile int WriteHead;
-} EvBufHeads, * PEvBufHeads, EBH, * PEBH;
+	volatile int ShortReadHead;
+	volatile int ShortWriteHead;
+	volatile int LongReadHead;
+	volatile int LongWriteHead;
+} EvBufHeads, *PEvBufHeads, EBH, *PEBH;
+
+typedef struct {
+	char* LongBuf;
+	int LongBufSize[MAX_MIDIHDR_BUF];
+
+} LongEvBuf, *PLongEvBuf, LEB, *PLEB;
 
 namespace WinDriver {
 	class SynthPipe {
 	private:
-		const wchar_t* PipeNameTemplate = L"Local\\Shakra%sMem%u";
 		ErrorSystem::WinErr SynthErr;
-		int EvBufSize = 4096;
-		HANDLE* PDrvEvBufHeads = nullptr;
-		HANDLE* PDrvLongEvBuf = nullptr;
-		HANDLE* PDrvEvBuf = nullptr;
 
-		// EvBuf
+		// Pipe names
+		const wchar_t* FileMappingTemplate = L"Local\\Shakra%sMem%u\0";
+		const wchar_t* SEvLabel = L"SEv";
+		const wchar_t* LEvLabel = L"LEv";
+		const wchar_t* LEvLenLabel = L"LEvLen";
+		const wchar_t* EvHeadsLabel = L"EvHeads";
+		int EvBufSize = 4096;
+
+		// R/W heads
 		EvBufHeads** DrvEvBufHeads = nullptr;
-		MIDIHDR** DrvLongEvBuf;
+		HANDLE* PDrvEvBufHeads = nullptr;
+
+		// EvBuf file mapping handles
+		HANDLE* PDrvLongEvBuf = nullptr;
+		BYTE** DrvLongEvBuf;
+		HANDLE* PDrvLongEvBufLen = nullptr;
+		DWORD** DrvLongEvBufLen;
+
+		HANDLE* PDrvEvBuf = nullptr;
 		DWORD** DrvEvBuf;
+
 		bool PrepareArrays();
+		size_t LongBufIndex(int x, int y) const { return x + MAX_MIDIHDR_BUF * y; }
 
 	public:
 		bool OpenSynthHost();
-		bool CreatePipe(unsigned short PipeID, int Size);
-		bool OpenPipe(unsigned short PipeID);
+		bool PrepareFileMappings(unsigned short PipeID, bool Create, int Size);
 		bool ClosePipe(unsigned short PipeID);
 		bool PerformBufferCheck(unsigned short PipeID);
-		void ResetReadHeadIfNeeded(unsigned short PipeID);
-		int GetReadHeadPos(unsigned short PipeID);
-		int GetWriteHeadPos(unsigned short PipeID);
+		void ResetReadHeadsIfNeeded(unsigned short PipeID);
+		void GetReadHeadPos(unsigned short PipeID, int* SRH, int* LRH);
+		void GetWriteHeadPos(unsigned short PipeID, int* SWH, int* LWH);
 		unsigned int ParseShortEvent(unsigned short PipeID);
-		int ParseLongEvent(unsigned short PipeID, LPSTR* IIMidiHdr);
+		unsigned int ParseLongEvent(unsigned short PipeID, BYTE* PEvent);
 		void SaveShortEvent(unsigned short PipeID, unsigned int Event);
-		void SaveLongEvent(unsigned short PipeID, LPMIDIHDR Event);
-		unsigned int PrepareLongEvent(LPMIDIHDR Event);
-		unsigned int UnprepareLongEvent(LPMIDIHDR Event);
+		unsigned int SaveLongEvent(unsigned short PipeID, LPMIDIHDR Event);
+		unsigned int PrepareLongEvent(unsigned short PipeID, LPMIDIHDR Event);
+		unsigned int UnprepareLongEvent(unsigned short PipeID, LPMIDIHDR Event);
 	};
 }
 
