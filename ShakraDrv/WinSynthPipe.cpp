@@ -325,7 +325,7 @@ bool WinDriver::SynthPipe::ClosePipe(unsigned short PipeID) {
 }
 
 bool WinDriver::SynthPipe::PerformBufferCheck(unsigned short PipeID) {
-	return (DrvEvBufHeads[PipeID]->ShortReadHead != DrvEvBufHeads[PipeID]->ShortWriteHead);
+	return ((DrvEvBufHeads[PipeID]->ShortReadHead != DrvEvBufHeads[PipeID]->ShortWriteHead));
 }
 
 void WinDriver::SynthPipe::ResetReadHeadsIfNeeded(unsigned short PipeID) {

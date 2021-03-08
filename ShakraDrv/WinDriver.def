@@ -1,6 +1,10 @@
 LIBRARY
 
 EXPORTS
+	InitializeKDMAPIStream
+	TerminateKDMAPIStream
+	SendDirectData
+	IsKDMAPIAvailable
 	DriverProc
 	DriverRegistration
 	modMessage

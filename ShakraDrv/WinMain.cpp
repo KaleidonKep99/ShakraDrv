@@ -590,3 +590,36 @@ void WINAPI SH_GWHP(unsigned short PipeID, int* SWH, int* LWH) {
 bool WINAPI SH_BC(unsigned short PipeID) {
 	return SynthSys.PerformBufferCheck(PipeID);
 }
+
+//
+// KDMAPI
+//
+
+int WINAPI InitializeKDMAPIStream() {
+	if (!SynthSys.PrepareFileMappings(0, false, 0)) {
+		// Something went wrong, the driver failed to open
+		NERROR(DrvErr, L"Failed to open driver.", false);
+		DriverComponent.CloseDriver();
+		return FALSE;
+	}
+	
+	return TRUE;
+}
+
+int WINAPI TerminateKDMAPIStream() {
+	if (SynthSys.ClosePipe(0)) {
+		NERROR(DrvErr, L"Failed to close driver.", false);
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+uint32_t WINAPI SendDirectData(unsigned long Message) {
+	SynthSys.SaveShortEvent(0, Message);
+	return MMSYSERR_NOERROR;
+}
+
+int WINAPI IsKDMAPIAvailable() {
+	return TRUE;
+}

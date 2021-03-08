@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
 using System.IO.Pipes;
 using System.Linq;
@@ -161,6 +162,7 @@ namespace ShakraHost
         static extern bool NtDelayExecution(in bool Alertable, in Int64 DelayInterval);
 
         PipesData[] Pipes = new PipesData[4];
+        bool[] PipesKillSwitches = new bool[4];
         DispatcherTimer DTimer = new DispatcherTimer();
 
         public void Test()
@@ -173,27 +175,13 @@ namespace ShakraHost
         public MainWindow()
         {
             InitializeComponent();
+            this.Closing += new CancelEventHandler(OnClosing);
 
             MessageBox.Show("waiting");
 
             try
             {
-                if (Bass.BASS_Init(-1, 48000, BASSInit.BASS_DEVICE_DEFAULT, IntPtr.Zero))
-                {
-                    for (ushort i = 0; i < Pipes.Length; i++)
-                    {
-                        PipesData PipeD = new PipesData();
-                        PipeD.PipeID = i;
-
-                        Pipes[i] = PipeD;
-
-                        Pipes[i].BASST = new Thread(BASSThread);
-                        Pipes[i].BASST.Start(Pipes[i]);
-                    }
-
-                    DTimer.Tick += DTimerTick;
-                    DTimer.Interval = new TimeSpan(0, 0, 0, 0, 10);
-                }
+                StartThreads();
             }
             catch (Exception ex)
             {
@@ -201,35 +189,87 @@ namespace ShakraHost
             }
         }
 
+        private void OnClosing(object sender, CancelEventArgs e)
+        {
+            StopThreads();
+        }
+
         private void DTimerTick(object sender, EventArgs e)
         {
+            float A = 0.0f;
             int SRH = 0, LRH = 0, SWH = 0, LWH = 0;
 
             ShakraDLL.GetReadHeadPos(0, out SRH, out LRH);
             ShakraDLL.GetWriteHeadPos(0, out SWH, out LWH);
 
             MIDIEvent SEvent = new MIDIEvent(ShakraDLL.ParseShortEvent(0));
+            Bass.BASS_ChannelGetAttribute(Pipes[0].Handle, BASSAttribute.BASS_ATTRIB_MIDI_VOICES_ACTIVE, ref A);
 
             RH.Content = String.Format("SRH/SWH: {0:D4}/{1:D4}", SRH.ToString(), SWH.ToString());
-            WH.Content = String.Format("LRH/LWH: {0:D4}/{1:D4}", LRH.ToString(), LWH.ToString());
+            WH.Content = String.Format("V: {0:D4}", Convert.ToInt32(A));
             CurBuf.Content = String.Format("{0:X8} (Ch {1:X2}-{1:D3} | P1 {2:X2}-{2:D3} | P2 {3:X2}-{3:D3}) | Ps {4:X4}-{4:D5})",
                 SEvent.GetWholeEvent(), SEvent.GetChannel(),
                 SEvent.GetFirstParam(), SEvent.GetSecondParam(), SEvent.GetParams());
         }
 
+        private void StartThreads()
+        {
+            BASS_INFO info = new BASS_INFO();
+            
+            if (Bass.BASS_Init(-1, 48000, BASSInit.BASS_DEVICE_DEFAULT | BASSInit.BASS_DEVICE_LATENCY | BASSInit.BASS_DEVICE_DSOUND, IntPtr.Zero))
+            {
+                Bass.BASS_GetInfo(info);
+                Bass.BASS_SetConfig(BASSConfig.BASS_CONFIG_BUFFER, info.minbuf - 10);
+
+                for (ushort i = 0; i < Pipes.Length; i++)
+                {
+                    PipesData PipeD = new PipesData();
+                    PipeD.PipeID = i;
+
+                    Pipes[i] = PipeD;
+
+                    Pipes[i].BASST = new Thread(BASSThread);
+                    Pipes[i].BASST.Start(Pipes[i]);
+                }
+
+                DTimer.Tick += DTimerTick;
+                DTimer.Interval = new TimeSpan(0, 0, 0, 0, 10);
+            }
+        }
+
+        private void StopThreads()
+        {
+            for (ushort i = 0; i < Pipes.Length; i++)
+            {
+                PipesKillSwitches[i] = true;
+
+                while (Pipes[i].BASST.IsAlive) /* Spin while the thread is still alive */;
+
+                Bass.BASS_StreamFree(Pipes[i].Handle);
+
+                PipesKillSwitches[i] = false;
+            }
+
+            Bass.BASS_Free();
+        }
+
         private unsafe void BASSThread(object Pipe)
         {
+            // Pipe
+            PipesData TPipe;
+
             // Short
             BASS_MIDI_EVENT ev;
             MIDIEvent SEvent = new MIDIEvent(0x00000000);
 
             // Long
-            IntPtr PEvent = Marshal.AllocHGlobal(65536);
+            IntPtr PEvent;
             uint PEventS = 0;
 
             try
             {
-                PipesData TPipe = (PipesData)Pipe;
+                TPipe = (PipesData)Pipe;
+                PEvent = Marshal.AllocHGlobal(65536);
 
                 TPipe.SF = new BASS_MIDI_FONT[1];
                 TPipe.SF[0].font = BassMidi.BASS_MIDI_FontInit("test.sf2");
@@ -249,7 +289,7 @@ namespace ShakraHost
                 ShakraDLL.CreatePipe(TPipe.PipeID, 4096);
                 DTimer.Start();
 
-                while (true)
+                while (!PipesKillSwitches[TPipe.PipeID])
                 {
                     PEventS = ShakraDLL.ParseLongEvent(TPipe.PipeID, PEvent);
                     if (PEventS != 0)
@@ -305,6 +345,8 @@ namespace ShakraHost
                         BassMidi.BASS_MIDI_StreamEvents(TPipe.Handle, BASSMIDIEventMode.BASS_MIDI_EVENTS_STRUCT, new BASS_MIDI_EVENT[] { ev });
                     } while (ShakraDLL.PerformBufferCheck(TPipe.PipeID));
                 }
+
+                PipesKillSwitches[TPipe.PipeID] = false;
             }
             catch (Exception ex)
             {
