@@ -23,7 +23,6 @@ This file is useful only if you want to compile the driver under Windows, it's n
 #include <string>
 #include <sstream>
 #include <vector>
-
 #include <new>
 #include <cstdio>
 
@@ -37,7 +36,6 @@ typedef struct {
 typedef struct {
 	char* LongBuf;
 	int LongBufSize[MAX_MIDIHDR_BUF];
-
 } LongEvBuf, *PLongEvBuf, LEB, *PLEB;
 
 namespace WinDriver {
@@ -51,7 +49,7 @@ namespace WinDriver {
 		const wchar_t* LEvLabel = L"LEv";
 		const wchar_t* LEvLenLabel = L"LEvLen";
 		const wchar_t* EvHeadsLabel = L"EvHeads";
-		int EvBufSize = 4096;
+		int EvBufSize = 16384;
 
 		// R/W heads
 		EvBufHeads** DrvEvBufHeads = nullptr;
@@ -67,7 +65,6 @@ namespace WinDriver {
 		DWORD** DrvEvBuf;
 
 		bool PrepareArrays();
-		size_t LongBufIndex(int x, int y) const { return x + MAX_MIDIHDR_BUF * y; }
 
 	public:
 		bool OpenSynthHost();
@@ -75,8 +72,8 @@ namespace WinDriver {
 		bool ClosePipe(unsigned short PipeID);
 		bool PerformBufferCheck(unsigned short PipeID);
 		void ResetReadHeadsIfNeeded(unsigned short PipeID);
-		void GetReadHeadPos(unsigned short PipeID, int* SRH, int* LRH);
-		void GetWriteHeadPos(unsigned short PipeID, int* SWH, int* LWH);
+		int GetShortReadHeadPos(unsigned short PipeID);
+		int GetShortWriteHeadPos(unsigned short PipeID);
 		unsigned int ParseShortEvent(unsigned short PipeID);
 		unsigned int ParseLongEvent(unsigned short PipeID, BYTE* PEvent);
 		void SaveShortEvent(unsigned short PipeID, unsigned int Event);

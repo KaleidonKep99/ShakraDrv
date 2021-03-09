@@ -63,21 +63,6 @@ bool WinDriver::LibLoader::FreeLib(WinLib* Target) {
 	return true;
 }
 
-bool WinDriver::DriverMask::ChangeName(const wchar_t* NewName) {
-	if (NewName != nullptr) {
-		if (wcslen(NewName) < 31)
-		{
-			this->Name = NewName;
-			return true;
-		}
-
-		NERROR(MaskErr, L"The name is too long!", false);
-	}
-	else NERROR(MaskErr, L"Something went wrong while trying to access the new name. Memory corruption?", true);
-
-	return false;
-}
-
 bool WinDriver::DriverMask::ChangeSettings(short NMID, short NPID, short NT, short NS) {
 	// TODO: Check if the values contain valid technologies/support flags
 
@@ -89,7 +74,8 @@ bool WinDriver::DriverMask::ChangeSettings(short NMID, short NPID, short NT, sho
 	return true;
 }
 
-unsigned long WinDriver::DriverMask::GiveCaps(PVOID CapsPointer, DWORD CapsSize) {
+unsigned long WinDriver::DriverMask::GiveCaps(UINT DeviceIdentifier, PVOID CapsPointer, DWORD CapsSize) {
+	wchar_t DevName[MAXPNAMELEN] = { 0 };
 	MIDIOUTCAPSA CapsA;
 	MIDIOUTCAPSW CapsW;
 	MIDIOUTCAPS2A Caps2A;
@@ -108,10 +94,12 @@ unsigned long WinDriver::DriverMask::GiveCaps(PVOID CapsPointer, DWORD CapsSize)
 		return MMSYSERR_INVALPARAM;
 	}
 
+	swprintf_s(DevName, MAXPNAMELEN, this->TemplateName, DeviceIdentifier);
+
 	// I have to support all this s**t or else it won't work in some apps smh
 	switch (CapsSize) {
 	case (sizeof(MIDIOUTCAPSA)):
-		wcstombs_s(&WCSTSRetVal, CapsA.szPname, sizeof(CapsA.szPname), this->Name.c_str(), MAXPNAMELEN);
+		wcstombs_s(&WCSTSRetVal, CapsA.szPname, sizeof(CapsA.szPname), DevName, MAXPNAMELEN);
 		CapsA.dwSupport = this->Support;
 		CapsA.wChannelMask = 0xFFFF;
 		CapsA.wMid = this->ManufacturerID;
@@ -124,7 +112,7 @@ unsigned long WinDriver::DriverMask::GiveCaps(PVOID CapsPointer, DWORD CapsSize)
 		break;
 
 	case (sizeof(MIDIOUTCAPSW)):
-		wcsncpy_s(CapsW.szPname, this->Name.c_str(), MAXPNAMELEN);
+		wcsncpy_s(CapsW.szPname, DevName, MAXPNAMELEN);
 		CapsW.dwSupport = this->Support;
 		CapsW.wChannelMask = 0xFFFF;
 		CapsW.wMid = this->ManufacturerID;
@@ -137,7 +125,7 @@ unsigned long WinDriver::DriverMask::GiveCaps(PVOID CapsPointer, DWORD CapsSize)
 		break;
 
 	case (sizeof(MIDIOUTCAPS2A)):
-		wcstombs_s(&WCSTSRetVal, Caps2A.szPname, sizeof(Caps2A.szPname), this->Name.c_str(), MAXPNAMELEN);
+		wcstombs_s(&WCSTSRetVal, Caps2A.szPname, sizeof(Caps2A.szPname), DevName, MAXPNAMELEN);
 		Caps2A.dwSupport = this->Support;
 		Caps2A.wChannelMask = 0xFFFF;
 		Caps2A.wMid = this->ManufacturerID;
@@ -150,7 +138,7 @@ unsigned long WinDriver::DriverMask::GiveCaps(PVOID CapsPointer, DWORD CapsSize)
 		break;
 
 	case (sizeof(MIDIOUTCAPS2W)):
-		wcsncpy_s(Caps2W.szPname, this->Name.c_str(), MAXPNAMELEN);
+		wcsncpy_s(Caps2W.szPname, DevName, MAXPNAMELEN);
 		Caps2W.dwSupport = this->Support;
 		Caps2W.wChannelMask = 0xFFFF;
 		Caps2W.wMid = this->ManufacturerID;

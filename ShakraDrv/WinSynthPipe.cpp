@@ -197,13 +197,15 @@ bool WinDriver::SynthPipe::PrepareFileMappings(unsigned short PipeID, bool Creat
 		PDrvEvBuf[PipeID] = 
 			Create ?
 			// If "Create" is true, create the file mapping
-			CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, sizeof(DWORD) * EvBufSize, FMName) :
+			CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE | SEC_COMMIT, 0, sizeof(DWORD) * EvBufSize, FMName) :
 			// Else, open the already existing (if it exists ofc) file mapping
 			OpenFileMapping(FILE_MAP_ALL_ACCESS, FALSE, FMName);
 
 		if (PDrvEvBuf[PipeID]) {
-			SetNamedSecurityInfo(FMName, SE_KERNEL_OBJECT, DACL_SECURITY_INFORMATION, 0, 0, (PACL)NULL, NULL);
-			PVOID MOVF = MapViewOfFile(PDrvEvBuf[PipeID], FILE_MAP_ALL_ACCESS, 0, 0, sizeof(DWORD) * EvBufSize);
+			if (Create)
+				SetSecurityInfo(PDrvEvBuf[PipeID], SE_KERNEL_OBJECT, DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION, 0, 0, 0, 0);
+			
+			PVOID MOVF = MapViewOfFile(PDrvEvBuf[PipeID], FILE_MAP_ALL_ACCESS, 0, 0, 0);
 
 			if (MOVF != nullptr) {
 				DrvEvBuf[PipeID] = (DWORD*)MOVF;
@@ -215,19 +217,20 @@ bool WinDriver::SynthPipe::PrepareFileMappings(unsigned short PipeID, bool Creat
 			}
 		}
 
-
 		// Initialize long buffer
 		swprintf_s(FMName, 32, FileMappingTemplate, LEvLabel, PipeID);
 		PDrvLongEvBuf[PipeID] =
 			Create ?
 			// If "Create" is true, create the file mapping
-			CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, sizeof(BYTE) * 65536, FMName) :
+			CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE | SEC_COMMIT, 0, sizeof(BYTE) * 65536, FMName) :
 			// Else, open the already existing (if it exists ofc) file mapping
 			OpenFileMapping(FILE_MAP_ALL_ACCESS, FALSE, FMName);
 
 		if (PDrvLongEvBuf[PipeID]) {
-			SetNamedSecurityInfo(FMName, SE_KERNEL_OBJECT, DACL_SECURITY_INFORMATION, 0, 0, (PACL)NULL, NULL);
-			PVOID MOVF = MapViewOfFile(PDrvLongEvBuf[PipeID], FILE_MAP_ALL_ACCESS, 0, 0, sizeof(BYTE) * 65536);
+			if (Create)
+				SetSecurityInfo(PDrvLongEvBuf[PipeID], SE_KERNEL_OBJECT, DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION, 0, 0, 0, 0);
+			
+			PVOID MOVF = MapViewOfFile(PDrvLongEvBuf[PipeID], FILE_MAP_ALL_ACCESS, 0, 0, 0);
 
 			if (MOVF != nullptr) {
 				DrvLongEvBuf[PipeID] = (BYTE*)MOVF;
@@ -243,13 +246,15 @@ bool WinDriver::SynthPipe::PrepareFileMappings(unsigned short PipeID, bool Creat
 		PDrvLongEvBufLen[PipeID] =
 			Create ?
 			// If "Create" is true, create the file mapping
-			CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, sizeof(DWORD), FMName) :
+			CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE | SEC_COMMIT, 0, sizeof(DWORD), FMName) :
 			// Else, open the already existing (if it exists ofc) file mapping
 			OpenFileMapping(FILE_MAP_ALL_ACCESS, FALSE, FMName);
 
 		if (PDrvLongEvBufLen[PipeID]) {
-			SetNamedSecurityInfo(FMName, SE_KERNEL_OBJECT, DACL_SECURITY_INFORMATION, 0, 0, (PACL)NULL, NULL);
-			PVOID MOVF = MapViewOfFile(PDrvLongEvBufLen[PipeID], FILE_MAP_ALL_ACCESS, 0, 0, sizeof(DWORD));
+			if (Create)
+				SetSecurityInfo(PDrvLongEvBufLen[PipeID], SE_KERNEL_OBJECT, DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION, 0, 0, 0, 0);
+			
+			PVOID MOVF = MapViewOfFile(PDrvLongEvBufLen[PipeID], FILE_MAP_ALL_ACCESS, 0, 0, 0);
 
 			if (MOVF != nullptr) {
 				DrvLongEvBufLen[PipeID] = (DWORD*)MOVF;
@@ -266,13 +271,15 @@ bool WinDriver::SynthPipe::PrepareFileMappings(unsigned short PipeID, bool Creat
 		PDrvEvBufHeads[PipeID] =
 			Create ?
 			// If "Create" is true, create the file mapping
-			CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, sizeof(EvBufHeads), FMName) :
+			CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE | SEC_COMMIT, 0, sizeof(EvBufHeads), FMName) :
 			// Else, open the already existing (if it exists ofc) file mapping
 			OpenFileMapping(FILE_MAP_ALL_ACCESS, FALSE, FMName);
 
 		if (PDrvEvBufHeads[PipeID]) {
-			SetNamedSecurityInfo(FMName, SE_KERNEL_OBJECT, DACL_SECURITY_INFORMATION, 0, 0, (PACL)NULL, NULL);
-			PVOID MOVF = MapViewOfFile(PDrvEvBufHeads[PipeID], FILE_MAP_ALL_ACCESS, 0, 0, sizeof(EvBufHeads));
+			if (Create)
+				SetSecurityInfo(PDrvEvBufHeads[PipeID], SE_KERNEL_OBJECT, DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION, 0, 0, 0, 0);
+			
+			PVOID MOVF = MapViewOfFile(PDrvEvBufHeads[PipeID], FILE_MAP_ALL_ACCESS, 0, 0, 0);
 
 			if (MOVF != nullptr) {
 				DrvEvBufHeads[PipeID] = (PEvBufHeads)MOVF;
@@ -336,14 +343,12 @@ void WinDriver::SynthPipe::ResetReadHeadsIfNeeded(unsigned short PipeID) {
 		DrvEvBufHeads[PipeID]->LongReadHead = 0;
 }
 
-void WinDriver::SynthPipe::GetReadHeadPos(unsigned short PipeID, int *SRH, int *LRH) {
-	*SRH = DrvEvBufHeads[PipeID]->ShortReadHead;
-	*LRH = DrvEvBufHeads[PipeID]->LongReadHead;
+int WinDriver::SynthPipe::GetShortReadHeadPos(unsigned short PipeID) {
+	return DrvEvBufHeads[PipeID]->ShortReadHead;
 }
 
-void WinDriver::SynthPipe::GetWriteHeadPos(unsigned short PipeID, int* SWH, int* LWH) {
-	*SWH = DrvEvBufHeads[PipeID]->ShortWriteHead;
-	*LWH = DrvEvBufHeads[PipeID]->LongWriteHead;
+int WinDriver::SynthPipe::GetShortWriteHeadPos(unsigned short PipeID) {
+	return DrvEvBufHeads[PipeID]->ShortWriteHead;
 }
 
 unsigned int WinDriver::SynthPipe::ParseShortEvent(unsigned short PipeID) {

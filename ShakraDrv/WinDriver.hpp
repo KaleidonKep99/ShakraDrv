@@ -40,7 +40,7 @@ namespace WinDriver {
 
 	class DriverMask {
 	private:
-		wstring Name = L"Shakra Driver\0";
+		const wchar_t* TemplateName = L"Shakra Driver (Port %d)\0";
 
 		unsigned short ManufacturerID = 0xFFFF;
 		unsigned short ProductID = 0xFFFF;
@@ -51,9 +51,8 @@ namespace WinDriver {
 
 	public:
 		// Change settings
-		bool ChangeName(const wchar_t*);
 		bool ChangeSettings(short, short, short, short);
-		unsigned long GiveCaps(PVOID, DWORD);
+		unsigned long GiveCaps(UINT, PVOID, DWORD);
 	};
 
 	class DriverCallback {

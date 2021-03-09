@@ -501,6 +501,9 @@ unsigned int modMessage(UINT DeviceIdentifier, UINT Message, DWORD_PTR DriverAdd
 		return modM;
 
 	case MODM_RESET:
+
+		return MMSYSERR_NOERROR;
+
 	case MODM_GETVOLUME:
 	case MODM_SETVOLUME:
 		return MMSYSERR_NOERROR;
@@ -543,10 +546,10 @@ unsigned int modMessage(UINT DeviceIdentifier, UINT Message, DWORD_PTR DriverAdd
 		return MMSYSERR_NOERROR;
 
 	case MODM_GETNUMDEVS:
-		return 0x1;
+		return 0x4;
 
 	case MODM_GETDEVCAPS:
-		return DriverMask[DeviceIdentifier].GiveCaps((PVOID)Param1, (DWORD)Param2);
+		return DriverMask[DeviceIdentifier].GiveCaps(DeviceIdentifier, (PVOID)Param1, (DWORD)Param2);
 
 	case MODM_CACHEPATCHES:
 	case MODM_CACHEDRUMPATCHES:
@@ -579,12 +582,12 @@ void WINAPI SH_RRHIN(unsigned short PipeID) {
 	SynthSys.ResetReadHeadsIfNeeded(PipeID);
 }
 
-void WINAPI SH_GRHP(unsigned short PipeID, int *SRH, int *LRH) {
-	SynthSys.GetReadHeadPos(PipeID, SRH, LRH);
+int WINAPI SH_GSRHP(unsigned short PipeID) {
+	return SynthSys.GetShortReadHeadPos(PipeID);
 }
 
-void WINAPI SH_GWHP(unsigned short PipeID, int* SWH, int* LWH) {
-	SynthSys.GetWriteHeadPos(PipeID, SWH, LWH);
+int WINAPI SH_GSWHP(unsigned short PipeID) {
+	return SynthSys.GetShortWriteHeadPos(PipeID);
 }
 
 bool WINAPI SH_BC(unsigned short PipeID) {
