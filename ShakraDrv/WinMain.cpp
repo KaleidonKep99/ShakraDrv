@@ -11,8 +11,8 @@ This file is useful only if you want to compile the driver under Windows, it's n
 
 // Win32 components
 static WinDriver::DriverComponent DriverComponent;
-static WinDriver::DriverCallback* DriverAppCallback;
-static WinDriver::DriverMask* DriverMask;
+static WinDriver::DriverCallback DriverAppCallback;
+static WinDriver::DriverMask DriverMask;
 
 // Synth components
 static WinDriver::SynthPipe SynthSys;
@@ -25,24 +25,6 @@ bool __stdcall DllMain(HINSTANCE HinstanceDLL, DWORD fdwReason, LPVOID lpvR) {
 	case DLL_PROCESS_ATTACH:
 		if (!DisableThreadLibraryCalls(HinstanceDLL))
 			return false;
-
-		if (DriverAppCallback == nullptr) {
-			DriverAppCallback = new (std::nothrow) WinDriver::DriverCallback[MAX_DRIVERS];
-
-			if (DriverAppCallback == nullptr) {
-				FNERROR(DrvErr, L"DriverCallback returned nullptr. Can not continue!");
-				return NULL;
-			}
-		}
-
-		if (DriverMask == nullptr) {
-			DriverMask = new (std::nothrow) WinDriver::DriverMask[MAX_DRIVERS];
-
-			if (DriverMask == nullptr) {
-				FNERROR(DrvErr, L"DriverMask returned nullptr. Can not continue!");
-				return NULL;
-			}
-		}
 
 		break;
 
@@ -68,7 +50,7 @@ static bool isWow64Process() {
 	return IsUnderWOW64;
 }
 
-void DriverRegistration(HWND HWND, LPSTR CommandLine, bool CmdShow) {
+void DriverRegistration(HWND HWND, HINSTANCE hInst, LPSTR CommandLine, bool CmdShow) {
 	// Check the argument sent by RunDLL32, and see what the heck it wants from us
 	bool Registration = (_stricmp(CommandLine, "RegisterDrv") == 0), UnregisterPass = false;
 
@@ -435,6 +417,7 @@ void DriverRegistration(HWND HWND, LPSTR CommandLine, bool CmdShow) {
 
 	// I have no idea?
 	else {
+		MessageBoxA(HWND, CommandLine, "Command", MB_OK);
 		MessageBoxA(
 			HWND,
 			"RunDLL32 sent an empty or unrecognized command line.\n\nThe driver doesn't know what to do, so press OK to quit.",
@@ -444,11 +427,11 @@ void DriverRegistration(HWND HWND, LPSTR CommandLine, bool CmdShow) {
 }
 
 void __stdcall DriverReg(HWND HWND, HINSTANCE HinstanceDLL, LPSTR CommandLine, DWORD CmdShow) {
-	DriverRegistration(HWND, CommandLine, true);
+	DriverRegistration(HWND, HinstanceDLL, CommandLine, true);
 }
 
 void __stdcall SilentDriverReg(HWND HWND, HINSTANCE HinstanceDLL, LPSTR CommandLine, DWORD CmdShow) {
-	DriverRegistration(HWND, CommandLine, false);
+	DriverRegistration(HWND, HinstanceDLL, CommandLine, false);
 }
 
 LRESULT __stdcall DriverProc(DWORD DriverIdentifier, HDRVR DriverHandle, UINT Message, LONG Param1, LONG Param2) {
@@ -484,24 +467,23 @@ unsigned int modMessage(UINT DeviceIdentifier, UINT Message, DWORD_PTR DriverAdd
 
 	switch (Message) {
 	case MODM_DATA:
-		SynthSys.SaveShortEvent(DeviceIdentifier, (DWORD)Param1);
+		SynthSys.SaveShortEvent((DWORD)Param1);
 		return MMSYSERR_NOERROR;
 
 	case MODM_LONGDATA:
-		modM = SynthSys.SaveLongEvent(DeviceIdentifier, (MIDIHDR*)Param1);
-		DriverAppCallback[DeviceIdentifier].CallbackFunction(MOM_DONE, Param1, 0);
+		modM = SynthSys.SaveLongEvent((MIDIHDR*)Param1);
+		DriverAppCallback.CallbackFunction(MOM_DONE, Param1, 0);
 		return modM;
 
 	case MODM_PREPARE:
-		modM = SynthSys.PrepareLongEvent(DeviceIdentifier, (MIDIHDR*)Param1);
+		modM = SynthSys.PrepareLongEvent((MIDIHDR*)Param1);
 		return modM;
 
 	case MODM_UNPREPARE:
-		modM = SynthSys.UnprepareLongEvent(DeviceIdentifier, (MIDIHDR*)Param1);
+		modM = SynthSys.UnprepareLongEvent((MIDIHDR*)Param1);
 		return modM;
 
 	case MODM_RESET:
-
 		return MMSYSERR_NOERROR;
 
 	case MODM_GETVOLUME:
@@ -514,15 +496,15 @@ unsigned int modMessage(UINT DeviceIdentifier, UINT Message, DWORD_PTR DriverAdd
 			// Driver is busy in MODM_OPEN, reject any other MODM_OPEN/MODM_CLOSE call for the time being
 			DriverBusy = true;
 
-			if (!SynthSys.PrepareFileMappings(DeviceIdentifier, false, 0)) {
+			if (!SynthSys.PrepareFileMappings(0, false, 0)) {
 				// Something went wrong, the driver failed to open
 				NERROR(DrvErr, L"Failed to open driver.", false);
 				DriverComponent.CloseDriver();
 				return MMSYSERR_ERROR;
 			}
 
-			DriverAppCallback[DeviceIdentifier].PrepareCallbackFunction((LPMIDIOPENDESC)Param1, (DWORD)Param2);
-			DriverAppCallback[DeviceIdentifier].CallbackFunction(MOM_OPEN, 0, 0);
+			DriverAppCallback.PrepareCallbackFunction((LPMIDIOPENDESC)Param1, (DWORD)Param2);
+			DriverAppCallback.CallbackFunction(MOM_OPEN, 0, 0);
 
 			DriverBusy = false;
 			return MMSYSERR_NOERROR;
@@ -539,17 +521,17 @@ unsigned int modMessage(UINT DeviceIdentifier, UINT Message, DWORD_PTR DriverAdd
 			return MIDIERR_NOTREADY;
 		}
 
-		SynthSys.ClosePipe(DeviceIdentifier);
-		DriverAppCallback[DeviceIdentifier].CallbackFunction(MOM_CLOSE, NULL, NULL);
-		DriverAppCallback[DeviceIdentifier].ClearCallbackFunction();
+		SynthSys.ClosePipe();
+		DriverAppCallback.CallbackFunction(MOM_CLOSE, NULL, NULL);
+		DriverAppCallback.ClearCallbackFunction();
 
 		return MMSYSERR_NOERROR;
 
 	case MODM_GETNUMDEVS:
-		return 0x4;
+		return 0x1;
 
 	case MODM_GETDEVCAPS:
-		return DriverMask[DeviceIdentifier].GiveCaps(DeviceIdentifier, (PVOID)Param1, (DWORD)Param2);
+		return DriverMask.GiveCaps(DeviceIdentifier, (PVOID)Param1, (DWORD)Param2);
 
 	case MODM_CACHEPATCHES:
 	case MODM_CACHEDRUMPATCHES:
@@ -566,63 +548,30 @@ unsigned int modMessage(UINT DeviceIdentifier, UINT Message, DWORD_PTR DriverAdd
 // USED INTERNALLY BY SHAKRA HOST
 //
 
-bool WINAPI SH_CP(unsigned short PipeID, int Size) {
-	return SynthSys.PrepareFileMappings(PipeID, true, Size);
+bool WINAPI SH_CP(const wchar_t* Pipe, int Size) {
+	return SynthSys.PrepareFileMappings(Pipe, true, Size);
 }
 
-unsigned int WINAPI SH_PSE(unsigned short PipeID) {
-	return SynthSys.ParseShortEvent(PipeID);
+unsigned int WINAPI SH_PSE() {
+	return SynthSys.ParseShortEvent();
 }
 
-unsigned int WINAPI SH_PLE(unsigned short PipeID, BYTE* PEvent) {
-	return SynthSys.ParseLongEvent(PipeID, PEvent);
+unsigned int WINAPI SH_PLE(BYTE* PEvent) {
+	return SynthSys.ParseLongEvent(PEvent);
 }
 
-void WINAPI SH_RRHIN(unsigned short PipeID) {
-	SynthSys.ResetReadHeadsIfNeeded(PipeID);
+void WINAPI SH_RRHIN() {
+	SynthSys.ResetReadHeadsIfNeeded();
 }
 
-int WINAPI SH_GSRHP(unsigned short PipeID) {
-	return SynthSys.GetShortReadHeadPos(PipeID);
+int WINAPI SH_GRHP() {
+	return SynthSys.GetReadHeadPos();
 }
 
-int WINAPI SH_GSWHP(unsigned short PipeID) {
-	return SynthSys.GetShortWriteHeadPos(PipeID);
+int WINAPI SH_GWHP() {
+	return SynthSys.GetWriteHeadPos();
 }
 
-bool WINAPI SH_BC(unsigned short PipeID) {
-	return SynthSys.PerformBufferCheck(PipeID);
-}
-
-//
-// KDMAPI
-//
-
-int WINAPI InitializeKDMAPIStream() {
-	if (!SynthSys.PrepareFileMappings(0, false, 0)) {
-		// Something went wrong, the driver failed to open
-		NERROR(DrvErr, L"Failed to open driver.", false);
-		DriverComponent.CloseDriver();
-		return FALSE;
-	}
-	
-	return TRUE;
-}
-
-int WINAPI TerminateKDMAPIStream() {
-	if (SynthSys.ClosePipe(0)) {
-		NERROR(DrvErr, L"Failed to close driver.", false);
-		return FALSE;
-	}
-
-	return TRUE;
-}
-
-uint32_t WINAPI SendDirectData(unsigned long Message) {
-	SynthSys.SaveShortEvent(0, Message);
-	return MMSYSERR_NOERROR;
-}
-
-int WINAPI IsKDMAPIAvailable() {
-	return TRUE;
+bool WINAPI SH_BC() {
+	return SynthSys.PerformBufferCheck();
 }

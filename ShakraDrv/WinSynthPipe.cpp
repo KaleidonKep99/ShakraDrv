@@ -9,7 +9,7 @@ This file is useful only if you want to compile the driver under Windows, it's n
 
 #include "WinSynthPipe.hpp"
 
-bool WinDriver::SynthPipe::OpenSynthHost() {
+bool WinDriver::SynthPipe::OpenSynthHost(const wchar_t* Target) {
 	const wchar_t* AppName = L"ShakraHost.exe";
 	wchar_t Dummy[MAX_PATH] = { 0 };
 	wchar_t HostApp[MAX_PATH] = { 0 };
@@ -28,23 +28,6 @@ bool WinDriver::SynthPipe::OpenSynthHost() {
 	AppEntry.dwSize = sizeof(PROCESSENTRY32);
 
 	while (!IsOpen) {
-		if (Process32First(AppSnapshot, &AppEntry)) {
-			if (!_wcsicmp(AppEntry.szExeFile, AppName))
-				IsOpen = true;
-
-			while (Process32Next(AppSnapshot, &AppEntry) && !IsOpen) {
-				if (!_wcsicmp(AppEntry.szExeFile, AppName))
-				{
-					IsOpen = true;
-					LOG(SynthErr, L"Found a match for the synth.");
-					break;
-				}
-			}
-		}
-
-		if (IsOpen)
-			break;
-
 #ifndef _WIN64
 		if (!GetSystemWow64Directory(Dummy, _countof(Dummy)))
 		{
@@ -54,7 +37,7 @@ bool WinDriver::SynthPipe::OpenSynthHost() {
 #endif
 
 		if (SUCCEEDED(SHGetKnownFolderPath(PFGUID, 0, NULL, &PF))) {
-			swprintf_s(HostApp, MAX_PATH, L"%s\\Shakra Driver\\%s", PF, AppName);
+			swprintf_s(HostApp, MAX_PATH, L"%s\\Shakra Driver\\%s %s", PF, AppName, Target);
 
 			LOG(SynthErr, HostApp);
 
@@ -64,9 +47,11 @@ bool WinDriver::SynthPipe::OpenSynthHost() {
 			memset(&AppSI, 0, sizeof(AppSI));
 			AppSI.cb = sizeof(AppSI);
 
-			CreateProcess(
-				HostApp,
+			MessageBox(NULL, Target, L"A", MB_OK);
+
+			CreateProcessW(
 				NULL,
+				HostApp,
 				NULL,
 				NULL,
 				TRUE,
@@ -78,10 +63,12 @@ bool WinDriver::SynthPipe::OpenSynthHost() {
 			);
 			LOG(SynthErr, L"Created synthesizer process.");
 
-			WaitForSingleObject(AppPI.hProcess, 1500);
+			WaitForSingleObject(AppPI.hProcess, 5000);
 
 			CloseHandle(AppPI.hProcess);
 			CloseHandle(AppPI.hThread);
+
+			IsOpen = true;
 		}
 		else {
 			CoTaskMemFree(PF);
@@ -92,81 +79,39 @@ bool WinDriver::SynthPipe::OpenSynthHost() {
 	return true;
 }
 
+std::wstring WinDriver::SynthPipe::GenerateID() {
+	auto randchar = []() -> char
+	{
+		const char charset[] =
+			"0123456789"
+			"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+			"abcdefghijklmnopqrstuvwxyz";
+		const size_t max_index = (sizeof(charset) - 1);
+		return charset[rand() % max_index];
+	};
+	std::wstring str(32, 0);
+	std::generate_n(str.begin(), 32, randchar);
+	return str;
+}
+
 bool WinDriver::SynthPipe::PrepareArrays() {
 	// If the pipes haven't been initialized, do it now
-	if (!PDrvEvBuf)
+	if (!DrvShortEvBuf)
 	{
-		PDrvEvBuf = new (std::nothrow) HANDLE[MAX_DRIVERS];
+		DrvShortEvBuf = new (std::nothrow) ShortEvBuf;
 
-		if (!PDrvEvBuf) {
+		if (!DrvShortEvBuf) {
 			NERROR(SynthErr, L"Failed to allocate pipe handles for the short events buffer.", false);
 			return false;
 		}
 	}
 
-	if (!PDrvLongEvBuf)
+	if (!DrvLongEvBuf)
 	{
-		PDrvLongEvBuf = new (std::nothrow) HANDLE[MAX_DRIVERS];
-
-		if (!PDrvLongEvBuf) {
-			NERROR(SynthErr, L"Failed to allocate pipe handles for the long events buffer.", false);
-			return false;
-		}
-	}
-
-	if (!PDrvLongEvBufLen)
-	{
-		PDrvLongEvBufLen = new (std::nothrow) HANDLE[MAX_DRIVERS];
-
-		if (!PDrvLongEvBufLen) {
-			NERROR(SynthErr, L"Failed to allocate pipe handles for the long events buffer.", false);
-			return false;
-		}
-	}
-
-	if (!PDrvEvBufHeads)
-	{
-		PDrvEvBufHeads = new (std::nothrow) HANDLE[MAX_DRIVERS];
-
-		if (!PDrvEvBufHeads) {
-			NERROR(SynthErr, L"Failed to allocate buffer R/W heads handles.", false);
-			return false;
-		}
-	}
-
-	// If the buffer hasn't been initialized, do it now
-	if (!DrvEvBuf) {
-		DrvEvBuf = new (std::nothrow) LPDWORD[MAX_DRIVERS];
-
-		if (!DrvEvBuf) {
-			NERROR(SynthErr, L"Failed to allocate short events buffer.", false);
-			return false;
-		}
-	}
-
-	if (!DrvLongEvBuf) {
-		DrvLongEvBuf = new (std::nothrow) LPBYTE[MAX_DRIVERS];
+		DrvLongEvBuf = new (std::nothrow) LongEvBuf;
 
 		if (!DrvLongEvBuf) {
-			NERROR(SynthErr, L"Failed to allocate long events buffer.", false);
-			return false;
-		}
-	}
-
-	if (!DrvLongEvBufLen) {
-		DrvLongEvBufLen = new (std::nothrow) LPDWORD[MAX_DRIVERS];
-
-		if (!DrvLongEvBufLen) {
-			NERROR(SynthErr, L"Failed to allocate long events buffer.", false);
-			return false;
-		}
-	}
-
-	if (!DrvEvBufHeads) {
-		DrvEvBufHeads = new (std::nothrow) PEvBufHeads[MAX_DRIVERS];
-
-		if (!DrvEvBufHeads) {
-			NERROR(SynthErr, L"Failed to allocate heads for the buffer.", false);
+			NERROR(SynthErr, L"Failed to allocate pipe handles for the long events buffer.", false);
 			return false;
 		}
 	}
@@ -174,13 +119,9 @@ bool WinDriver::SynthPipe::PrepareArrays() {
 	return true;
 }
 
-bool WinDriver::SynthPipe::PrepareFileMappings(unsigned short PipeID, bool Create, int Size) {
-	wchar_t FMName[32] = { 0 };
-
-	// Check if the pipe ID is valid
-	if (PipeID > MAX_DRIVERS) {
-		return false;
-	}
+bool WinDriver::SynthPipe::PrepareFileMappings(const wchar_t* Pipe, bool Create, int Size) {
+	std::wstring TempID = GenerateID();
+	wchar_t FMName[MAX_PATH] = { 0 };
 
 	// Prepare arrays if they're not allocated yet
 	if (PrepareArrays()) {
@@ -189,102 +130,74 @@ bool WinDriver::SynthPipe::PrepareFileMappings(unsigned short PipeID, bool Creat
 			if (Size < 0 || Size > 2147483647) {
 				EvBufSize = 4096;
 			}
-			else EvBufSize = Size;
+			else EvBufSize = 32768;
 		}
 
 		// Initialize short buffer
-		swprintf_s(FMName, 32, FileMappingTemplate, SEvLabel, PipeID);
-		PDrvEvBuf[PipeID] = 
+		swprintf_s(FMName, MAX_PATH, FileMappingTemplate, SEvLabel, (!Pipe ? TempID.c_str() : Pipe));
+		MessageBox(NULL, FMName, (!Pipe ? TempID.c_str() : Pipe), MB_OK);
+		PDrvShortEvBuf =
 			Create ?
 			// If "Create" is true, create the file mapping
-			CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE | SEC_COMMIT, 0, sizeof(DWORD) * EvBufSize, FMName) :
+			CreateFileMappingW(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE | SEC_COMMIT, 0, sizeof(ShortEvBuf) + (sizeof(DWORD) * 32768), FMName) :
 			// Else, open the already existing (if it exists ofc) file mapping
 			OpenFileMapping(FILE_MAP_ALL_ACCESS, FALSE, FMName);
 
-		if (PDrvEvBuf[PipeID]) {
+		if (PDrvShortEvBuf) {
 			if (Create)
-				SetSecurityInfo(PDrvEvBuf[PipeID], SE_KERNEL_OBJECT, DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION, 0, 0, 0, 0);
-			
-			PVOID MOVF = MapViewOfFile(PDrvEvBuf[PipeID], FILE_MAP_ALL_ACCESS, 0, 0, 0);
+				SetSecurityInfo(PDrvShortEvBuf, SE_KERNEL_OBJECT, DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION, 0, 0, 0, 0);
 
-			if (MOVF != nullptr) {
-				DrvEvBuf[PipeID] = (DWORD*)MOVF;
-			}
+			PVOID MOVF = MapViewOfFile(PDrvShortEvBuf, FILE_MAP_ALL_ACCESS, 0, 0, 0);
+
+			if (MOVF != nullptr) DrvShortEvBuf = (PShortEvBuf)MOVF;
 			else
 			{
+				NERROR(SynthErr, nullptr, false);
+				return false;
+			}
+
+			DrvShortEvBuf->Buf = (PSE)calloc(MAX_SE_BUF, sizeof(SE));
+
+			if (!DrvShortEvBuf->Buf) {
 				NERROR(SynthErr, nullptr, false);
 				return false;
 			}
 		}
 
 		// Initialize long buffer
-		swprintf_s(FMName, 32, FileMappingTemplate, LEvLabel, PipeID);
-		PDrvLongEvBuf[PipeID] =
+		swprintf_s(FMName, MAX_PATH, FileMappingTemplate, LEvLabel, (!Pipe ? TempID.c_str() : Pipe));
+		MessageBox(NULL, FMName, (!Pipe ? TempID.c_str() : Pipe), MB_OK);
+		PDrvLongEvBuf =
 			Create ?
 			// If "Create" is true, create the file mapping
-			CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE | SEC_COMMIT, 0, sizeof(BYTE) * 65536, FMName) :
+			CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE | SEC_COMMIT, 0, sizeof(LongEvBuf), FMName) :
 			// Else, open the already existing (if it exists ofc) file mapping
 			OpenFileMapping(FILE_MAP_ALL_ACCESS, FALSE, FMName);
 
-		if (PDrvLongEvBuf[PipeID]) {
+		if (PDrvLongEvBuf) {
 			if (Create)
-				SetSecurityInfo(PDrvLongEvBuf[PipeID], SE_KERNEL_OBJECT, DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION, 0, 0, 0, 0);
-			
-			PVOID MOVF = MapViewOfFile(PDrvLongEvBuf[PipeID], FILE_MAP_ALL_ACCESS, 0, 0, 0);
+				SetSecurityInfo(PDrvLongEvBuf, SE_KERNEL_OBJECT, DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION, 0, 0, 0, 0);
 
-			if (MOVF != nullptr) {
-				DrvLongEvBuf[PipeID] = (BYTE*)MOVF;
-			}
+			PVOID MOVF = MapViewOfFile(PDrvLongEvBuf, FILE_MAP_ALL_ACCESS, 0, 0, 0);
+
+			if (MOVF != nullptr) DrvLongEvBuf = (PLongEvBuf)MOVF;
 			else
 			{
 				NERROR(SynthErr, nullptr, false);
 				return false;
 			}
-		}
 
-		swprintf_s(FMName, 32, FileMappingTemplate, LEvLenLabel, PipeID);
-		PDrvLongEvBufLen[PipeID] =
-			Create ?
-			// If "Create" is true, create the file mapping
-			CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE | SEC_COMMIT, 0, sizeof(DWORD), FMName) :
-			// Else, open the already existing (if it exists ofc) file mapping
-			OpenFileMapping(FILE_MAP_ALL_ACCESS, FALSE, FMName);
+			DrvLongEvBuf->Buf = (PLE)calloc(MAX_LE_BUF, sizeof(LE));
 
-		if (PDrvLongEvBufLen[PipeID]) {
-			if (Create)
-				SetSecurityInfo(PDrvLongEvBufLen[PipeID], SE_KERNEL_OBJECT, DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION, 0, 0, 0, 0);
-			
-			PVOID MOVF = MapViewOfFile(PDrvLongEvBufLen[PipeID], FILE_MAP_ALL_ACCESS, 0, 0, 0);
-
-			if (MOVF != nullptr) {
-				DrvLongEvBufLen[PipeID] = (DWORD*)MOVF;
-			}
-			else
-			{
+			if (!DrvLongEvBuf->Buf) {
 				NERROR(SynthErr, nullptr, false);
 				return false;
 			}
 		}
 
-		// Initialize buffer heads
-		swprintf_s(FMName, 32, FileMappingTemplate, EvHeadsLabel, PipeID);
-		PDrvEvBufHeads[PipeID] =
-			Create ?
-			// If "Create" is true, create the file mapping
-			CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE | SEC_COMMIT, 0, sizeof(EvBufHeads), FMName) :
-			// Else, open the already existing (if it exists ofc) file mapping
-			OpenFileMapping(FILE_MAP_ALL_ACCESS, FALSE, FMName);
-
-		if (PDrvEvBufHeads[PipeID]) {
-			if (Create)
-				SetSecurityInfo(PDrvEvBufHeads[PipeID], SE_KERNEL_OBJECT, DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION, 0, 0, 0, 0);
-			
-			PVOID MOVF = MapViewOfFile(PDrvEvBufHeads[PipeID], FILE_MAP_ALL_ACCESS, 0, 0, 0);
-
-			if (MOVF != nullptr) {
-				DrvEvBufHeads[PipeID] = (PEvBufHeads)MOVF;
-			}
-			else
+		if (!Create) 
+		{
+			if (!OpenSynthHost(!Pipe ? TempID.c_str() : Pipe))
 			{
 				NERROR(SynthErr, nullptr, false);
 				return false;
@@ -298,108 +211,99 @@ bool WinDriver::SynthPipe::PrepareFileMappings(unsigned short PipeID, bool Creat
 	return false;
 }
 
-bool WinDriver::SynthPipe::ClosePipe(unsigned short PipeID) {
-	if (!PDrvEvBuf && !PDrvLongEvBuf && !PDrvEvBufHeads) {
+bool WinDriver::SynthPipe::ClosePipe() {
+	if (!PDrvShortEvBuf && !PDrvLongEvBuf) {
 		LOG(SynthErr, L"ClosePipe() called with no pipes allocated.");
 		return true;
 	}
 
-	if (PDrvEvBuf[PipeID]) {
-		UnmapViewOfFile(DrvEvBuf[PipeID]);
-		CloseHandle(PDrvEvBuf[PipeID]);
-		PDrvEvBuf[PipeID] = nullptr;
+	if (PDrvShortEvBuf) {
+		if (DrvShortEvBuf->Buf)
+			free(DrvShortEvBuf->Buf);
+
+		UnmapViewOfFile(DrvShortEvBuf);
+		CloseHandle(PDrvShortEvBuf);
+		PDrvShortEvBuf = nullptr;
 	}
 
-	if (PDrvLongEvBuf[PipeID]) {
-		UnmapViewOfFile(DrvLongEvBuf[PipeID]);
-		CloseHandle(PDrvLongEvBuf[PipeID]);
-		PDrvLongEvBuf[PipeID] = nullptr;
-	}
-
-	if (PDrvLongEvBufLen[PipeID]) {
-		UnmapViewOfFile(DrvLongEvBufLen[PipeID]);
-		CloseHandle(PDrvLongEvBufLen[PipeID]);
-		PDrvLongEvBufLen[PipeID] = nullptr;
-	}
-
-	if (PDrvEvBufHeads[PipeID]) {
-		UnmapViewOfFile(DrvEvBufHeads[PipeID]);
-		CloseHandle(PDrvEvBufHeads[PipeID]);
-		PDrvEvBufHeads[PipeID] = nullptr;
+	if (PDrvLongEvBuf) {
+		UnmapViewOfFile(DrvLongEvBuf);
+		CloseHandle(PDrvLongEvBuf);
+		PDrvShortEvBuf = nullptr;
 	}
 
 	return true;
 }
 
-bool WinDriver::SynthPipe::PerformBufferCheck(unsigned short PipeID) {
-	return ((DrvEvBufHeads[PipeID]->ShortReadHead != DrvEvBufHeads[PipeID]->ShortWriteHead));
+bool WinDriver::SynthPipe::PerformBufferCheck() {
+	return ((DrvShortEvBuf->ReadHead != DrvShortEvBuf->WriteHead));
 }
 
-void WinDriver::SynthPipe::ResetReadHeadsIfNeeded(unsigned short PipeID) {
-	if (++DrvEvBufHeads[PipeID]->ShortReadHead >= EvBufSize)
-		DrvEvBufHeads[PipeID]->ShortReadHead = 0;
+void WinDriver::SynthPipe::ResetReadHeadsIfNeeded() {
+	if (++DrvShortEvBuf->ReadHead >= EvBufSize)
+		DrvShortEvBuf->ReadHead = 0;
 
-	if (++DrvEvBufHeads[PipeID]->LongReadHead >= MAX_MIDIHDR_BUF)
-		DrvEvBufHeads[PipeID]->LongReadHead = 0;
+	if (++DrvLongEvBuf->ReadHead >= MAX_MIDIHDR_BUF)
+		DrvLongEvBuf->ReadHead = 0;
 }
 
-int WinDriver::SynthPipe::GetShortReadHeadPos(unsigned short PipeID) {
-	return DrvEvBufHeads[PipeID]->ShortReadHead;
+int WinDriver::SynthPipe::GetReadHeadPos() {
+	return DrvShortEvBuf->ReadHead;
 }
 
-int WinDriver::SynthPipe::GetShortWriteHeadPos(unsigned short PipeID) {
-	return DrvEvBufHeads[PipeID]->ShortWriteHead;
+int WinDriver::SynthPipe::GetWriteHeadPos() {
+	return DrvShortEvBuf->WriteHead;
 }
 
-unsigned int WinDriver::SynthPipe::ParseShortEvent(unsigned short PipeID) {
-	return DrvEvBuf[PipeID][DrvEvBufHeads[PipeID]->ShortReadHead];
+unsigned int WinDriver::SynthPipe::ParseShortEvent() {
+	return DrvShortEvBuf->Buf[DrvShortEvBuf->ReadHead].Event;
 }
 
-unsigned int WinDriver::SynthPipe::ParseLongEvent(unsigned short PipeID, BYTE* PEvent) {
+unsigned int WinDriver::SynthPipe::ParseLongEvent(BYTE* PEvent) {
 	unsigned int Len = 0;
 
-	if (*(DrvLongEvBufLen[PipeID]) < 1)
+	if (DrvLongEvBuf->Buf[DrvLongEvBuf->ReadHead].EventLength < 1)
 		return 0;
 
 	// Copy new buffer
-	Len = *(DrvLongEvBufLen[PipeID]);
-	memcpy(PEvent, DrvLongEvBuf[PipeID], Len);
+	Len = DrvLongEvBuf->Buf[DrvLongEvBuf->ReadHead].EventLength;
+	memcpy(PEvent, DrvLongEvBuf->Buf[DrvLongEvBuf->ReadHead].Event, Len);
 
 	// Clear buffer
-	memset(DrvLongEvBuf[PipeID], 0, sizeof(BYTE) * 65536);
-	*(DrvLongEvBufLen[PipeID]) = 0;
+	memset(DrvLongEvBuf->Buf[DrvLongEvBuf->ReadHead].Event, 0, sizeof(BYTE) * 65536);
+	DrvLongEvBuf->Buf[DrvLongEvBuf->ReadHead].EventLength = 0;
 
 	return Len;
 }
 
-void WinDriver::SynthPipe::SaveShortEvent(unsigned short PipeID, unsigned int Event) {
-	if (!DrvEvBuf[PipeID])
+void WinDriver::SynthPipe::SaveShortEvent(unsigned int Event) {
+	if (!DrvShortEvBuf)
 		return;
 
-	auto NextWriteHead = DrvEvBufHeads[PipeID]->ShortWriteHead + 1;
+	auto NextWriteHead = DrvShortEvBuf->ReadHead + 1;
 	if (NextWriteHead >= EvBufSize) NextWriteHead = 0;
 
-	DrvEvBuf[PipeID][DrvEvBufHeads[PipeID]->ShortWriteHead] = Event;
+	DrvShortEvBuf->Buf[DrvShortEvBuf->ReadHead].Event = Event;
 
-	if (NextWriteHead != DrvEvBufHeads[PipeID]->ShortReadHead)
-		DrvEvBufHeads[PipeID]->ShortWriteHead = NextWriteHead;
+	if (NextWriteHead != DrvShortEvBuf->ReadHead)
+		DrvShortEvBuf->WriteHead = NextWriteHead;
 }
 
-unsigned int WinDriver::SynthPipe::SaveLongEvent(unsigned short PipeID, LPMIDIHDR Event) {
+unsigned int WinDriver::SynthPipe::SaveLongEvent(LPMIDIHDR Event) {
 	if (!(Event->dwFlags & MHDR_PREPARED)) {
 		NERROR(SynthErr, L"The MIDIHDR is not prepared.", false);
 		return MIDIERR_UNPREPARED;
 	}
 
-	while (*(DrvLongEvBufLen[PipeID]) != 0)
+	while (DrvLongEvBuf->Buf[DrvLongEvBuf->ReadHead].EventLength != 0)
 		Sleep(1);
 
 	Event->dwFlags &= ~MHDR_DONE;
 	Event->dwFlags |= MHDR_INQUEUE;
 
 	// Copy new buffer
-	*(DrvLongEvBufLen[PipeID]) = Event->dwBufferLength;
-	memcpy(DrvLongEvBuf[PipeID], Event->lpData, Event->dwBufferLength);
+	DrvLongEvBuf->Buf[DrvLongEvBuf->ReadHead].EventLength = Event->dwBufferLength;
+	memcpy(DrvLongEvBuf->Buf[DrvLongEvBuf->ReadHead].Event, Event->lpData, Event->dwBufferLength);
 
 	Event->dwFlags &= ~MHDR_INQUEUE;
 	Event->dwFlags |= MHDR_DONE;
@@ -407,7 +311,7 @@ unsigned int WinDriver::SynthPipe::SaveLongEvent(unsigned short PipeID, LPMIDIHD
 	return MMSYSERR_NOERROR;
 }
 
-unsigned int WinDriver::SynthPipe::PrepareLongEvent(unsigned short PipeID, LPMIDIHDR Event) {
+unsigned int WinDriver::SynthPipe::PrepareLongEvent(LPMIDIHDR Event) {
 	if (!Event) {
 		NERROR(SynthErr, L"The MIDIHDR buffer doesn't exist, or hasn't been allocated by the host application.", false);
 		return MMSYSERR_INVALPARAM;
@@ -425,7 +329,7 @@ unsigned int WinDriver::SynthPipe::PrepareLongEvent(unsigned short PipeID, LPMID
 	return MMSYSERR_NOERROR;
 }
 
-unsigned int WinDriver::SynthPipe::UnprepareLongEvent(unsigned short PipeID, LPMIDIHDR Event) {
+unsigned int WinDriver::SynthPipe::UnprepareLongEvent(LPMIDIHDR Event) {
 	if (!Event) {
 		NERROR(SynthErr, L"The MIDIHDR buffer doesn't exist, or hasn't been allocated by the host application.", false);
 		return MMSYSERR_INVALPARAM;

@@ -224,7 +224,7 @@ bool WinDriver::DriverComponent::SetDriverHandle(HDRVR Handle) {
 
 	// We already have the same pointer in memory.
 	if (this->DrvHandle == Handle) {
-		LOG(DrvErr, L"We already have the handle stored in memory. The app has Alzheimer I guess?");
+		LOG(DrvErr, L"We already have the handle stored in memory. The app has Alzheimer's I guess?");
 		return true;
 	}
 

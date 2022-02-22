@@ -11,5 +11,8 @@ This file is useful only if you want to compile the driver under Windows, it's n
 
 #define MAX_DRIVERS		4
 
+#define MAX_SE_BUF 32768
+#define MAX_LE_BUF 256
+
 #define MAX_MIDIHDR_BUF	256
 #define MIDIHDR_WRITTEN	29

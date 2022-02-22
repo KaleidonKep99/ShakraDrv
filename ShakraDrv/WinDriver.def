@@ -1,10 +1,6 @@
 LIBRARY
 
 EXPORTS
-	InitializeKDMAPIStream
-	TerminateKDMAPIStream
-	SendDirectData
-	IsKDMAPIAvailable
 	DriverProc
 	DriverRegistration
 	modMessage
@@ -12,6 +8,6 @@ EXPORTS
 	SH_PSE
 	SH_PLE
 	SH_RRHIN
-	SH_GSRHP
-	SH_GSWHP
+	SH_GRHP
+	SH_GWHP
 	SH_BC

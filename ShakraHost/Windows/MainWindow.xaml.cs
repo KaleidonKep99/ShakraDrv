@@ -19,8 +19,6 @@ using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
 using System.Windows.Threading;
-using Un4seen.Bass;
-using Un4seen.Bass.AddOn.Midi;
 
 namespace ShakraHost
 {
@@ -65,30 +63,65 @@ namespace ShakraHost
     {
         [DllImport("shakra.dll", SetLastError = true, EntryPoint = "SH_CP")]
         [return: MarshalAs(UnmanagedType.I1)]
-        public static extern bool CreatePipe(ushort Pipe, int Size);
+        public static extern bool CreatePipe(out string Pipe, int Size);
 
         [DllImport("shakra.dll", SetLastError = true, EntryPoint = "SH_PSE")]
-        public static extern uint ParseShortEvent(ushort Pipe);
+        public static extern uint ParseShortEvent();
 
         [DllImport("shakra.dll", SetLastError = true, EntryPoint = "SH_PLE")]
-        public static extern unsafe uint ParseLongEvent(ushort Pipe, IntPtr PEvent);
+        public static extern unsafe uint ParseLongEvent(IntPtr PEvent);
 
         [DllImport("shakra.dll", SetLastError = true, EntryPoint = "SH_FLE")]
         [return: MarshalAs(UnmanagedType.I1)]
-        public static extern bool FreeLongEvent(ushort Pipe);
+        public static extern bool FreeLongEvent();
 
         [DllImport("shakra.dll", SetLastError = true, EntryPoint = "SH_RRHIN")]
         public static extern void ResetReadHeadsIfNeeded(ushort Pipe);
 
-        [DllImport("shakra.dll", SetLastError = true, EntryPoint = "SH_GSRHP")]
-        public static extern int GetShortReadHeadPos(ushort Pipe);
+        [DllImport("shakra.dll", SetLastError = true, EntryPoint = "SH_GRHP")]
+        public static extern int GetReadHeadPos();
 
-        [DllImport("shakra.dll", SetLastError = true, EntryPoint = "SH_GSWHP")]
-        public static extern int GetShortWriteHeadPos(ushort Pipe);
+        [DllImport("shakra.dll", SetLastError = true, EntryPoint = "SH_GWHP")]
+        public static extern int GetWriteHeadPos();
 
         [DllImport("shakra.dll", SetLastError = true, EntryPoint = "SH_BC")]
         [return: MarshalAs(UnmanagedType.I1)]
-        public static extern bool PerformBufferCheck(ushort Pipe);
+        public static extern bool PerformBufferCheck();
+    }
+
+    class KDMAPI
+    {
+        [DllImport("OmniMIDI.dll", CallingConvention = CallingConvention.StdCall)]
+        public static extern int ReturnKDMAPIVer(ref Int32 Major, ref Int32 Minor, ref Int32 Build, ref Int32 Revision);
+
+        [DllImport("OmniMIDI.dll", CallingConvention = CallingConvention.StdCall)]
+        public static extern int InitializeKDMAPIStream();
+
+        [DllImport("OmniMIDI.dll", CallingConvention = CallingConvention.StdCall)]
+        public static extern int TerminateKDMAPIStream();
+
+        [DllImport("OmniMIDI.dll", CallingConvention = CallingConvention.StdCall)]
+        public static extern void ResetKDMAPIStream();
+
+        [DllImport("OmniMIDI.dll", CallingConvention = CallingConvention.StdCall)]
+        public static extern int IsKDMAPIAvailable();
+
+        [DllImport("OmniMIDI.dll", CallingConvention = CallingConvention.StdCall)]
+        public static extern int SendCustomEvent(uint eventtype, uint chan, uint param);
+
+        [DllImport("OmniMIDI.dll", CallingConvention = CallingConvention.StdCall)]
+        public static extern int SendDirectData(uint dwMsg);
+
+        [DllImport("OmniMIDI.dll", CallingConvention = CallingConvention.StdCall)]
+        public static extern int SendDirectDataNoBuf(uint dwMsg);
+
+        [DllImport("OmniMIDI.dll", CallingConvention = CallingConvention.StdCall)]
+        public static extern int SendDirectLongData(IntPtr IIMidiHdr);
+
+        [DllImport("OmniMIDI.dll", CallingConvention = CallingConvention.StdCall)]
+        public static extern int SendDirectLongDataNoBuf(IntPtr IIMidiHdr);
+
+        public static String KDMAPIVer = "Null";
     }
 
     public class MIDIEvent
@@ -144,12 +177,11 @@ namespace ShakraHost
         public byte GetSecret() { return Secret; }
     }
 
-    public class PipesData
+    public class ShakraPipe
     {
-        public int Handle = 0;
-        public Thread BASST = null;
-        public BASS_MIDI_FONT[] SF;
-        public ushort PipeID = 0;
+        public Thread RenderThread = null;
+        public string PipeID = "";
+        public bool KillSwitch = false;
     }
 
     public partial class MainWindow : Window
@@ -161,23 +193,13 @@ namespace ShakraHost
         [DllImport("ntdll.dll", SetLastError = true)]
         static extern bool NtDelayExecution(in bool Alertable, in Int64 DelayInterval);
 
-        PipesData[] Pipes = new PipesData[4];
-        bool[] PipesKillSwitches = new bool[4];
+        ShakraPipe Pipe = new ShakraPipe();
         DispatcherTimer DTimer = new DispatcherTimer();
-
-        public void Test()
-        {
-            ulong A = 0;
-
-            Thread.VolatileWrite(ref A, 2);
-        }
 
         public MainWindow()
         {
             InitializeComponent();
             this.Closing += new CancelEventHandler(OnClosing);
-
-            MessageBox.Show("waiting");
 
             try
             {
@@ -196,77 +218,43 @@ namespace ShakraHost
 
         private void DTimerTick(object sender, EventArgs e)
         {
-            float A = 0.0f, B = 0.0f, C = 0.0f, D = 0.0f;
+            RH.Content = String.Format("SRH/SWH: {0:D6}/{1:D6}",
+                ShakraDLL.GetReadHeadPos(), ShakraDLL.GetWriteHeadPos());
 
-            int SRH1 = ShakraDLL.GetShortReadHeadPos(0), SWH1 = ShakraDLL.GetShortWriteHeadPos(0),
-                SRH2 = ShakraDLL.GetShortReadHeadPos(1), SWH2 = ShakraDLL.GetShortWriteHeadPos(1),
-                SRH3 = ShakraDLL.GetShortReadHeadPos(2), SWH3 = ShakraDLL.GetShortWriteHeadPos(2),
-                SRH4 = ShakraDLL.GetShortReadHeadPos(3), SWH4 = ShakraDLL.GetShortWriteHeadPos(3);
-
-            Bass.BASS_ChannelGetAttribute(Pipes[0].Handle, BASSAttribute.BASS_ATTRIB_MIDI_VOICES_ACTIVE, ref A);
-            Bass.BASS_ChannelGetAttribute(Pipes[1].Handle, BASSAttribute.BASS_ATTRIB_MIDI_VOICES_ACTIVE, ref B);
-            Bass.BASS_ChannelGetAttribute(Pipes[2].Handle, BASSAttribute.BASS_ATTRIB_MIDI_VOICES_ACTIVE, ref C);
-            Bass.BASS_ChannelGetAttribute(Pipes[3].Handle, BASSAttribute.BASS_ATTRIB_MIDI_VOICES_ACTIVE, ref D);
-
-            RH.Content = String.Format("SRH/SWH 1: {0:D6}/{1:D6} | SRH/SWH 2: {2:D6}/{3:D6} | SRH/SWH 3: {4:D6}/{5:D6} | SRH/SWH 4: {6:D6}/{7:D6}",
-                SRH1.ToString(), SWH1.ToString(), SRH2.ToString(), SWH2.ToString(), SRH3.ToString(), SWH3.ToString(), SRH4.ToString(), SWH4.ToString());
-
-            WH.Content = String.Format("V1: {0:D4} | V2: {1:D4} | V3: {2:D4} | V4: {3:D4}", Convert.ToInt32(A), Convert.ToInt32(B), Convert.ToInt32(C), Convert.ToInt32(D));
+            WH.Content = String.Format("pre-alpha");
 
             CurBuf.Content = "N/A";
         }
 
         private void StartThreads()
         {
-            BASS_INFO info = new BASS_INFO();
-
-            Bass.BASS_SetConfig(BASSConfig.BASS_CONFIG_UPDATETHREADS, 0);
-            Bass.BASS_SetConfig(BASSConfig.BASS_CONFIG_UPDATEPERIOD, 0);
-
-            if (Bass.BASS_Init(-1, 48000, BASSInit.BASS_DEVICE_DEFAULT | BASSInit.BASS_DEVICE_LATENCY | BASSInit.BASS_DEVICE_DSOUND, IntPtr.Zero))
+            if (KDMAPI.InitializeKDMAPIStream() == 1)
             {
-                Bass.BASS_GetInfo(info);
-                Bass.BASS_SetConfig(BASSConfig.BASS_CONFIG_BUFFER, info.minbuf - 10);
-
-                for (ushort i = 0; i < Pipes.Length; i++)
-                {
-                    PipesData PipeD = new PipesData();
-                    PipeD.PipeID = i;
-
-                    Pipes[i] = PipeD;
-
-                    Pipes[i].BASST = new Thread(BASSThread);
-                    Pipes[i].BASST.Start(Pipes[i]);
-                }
+                Pipe.PipeID = "0";
+                Pipe.RenderThread = new Thread(BASSThread);
 
                 DTimer.Tick += DTimerTick;
                 DTimer.Interval = new TimeSpan(0, 0, 0, 0, 10);
+
+                Pipe.RenderThread.Start(Pipe);
             }
         }
 
         private void StopThreads()
         {
-            for (ushort i = 0; i < Pipes.Length; i++)
-            {
-                PipesKillSwitches[i] = true;
+            Pipe.KillSwitch = true;
 
-                while (Pipes[i].BASST.IsAlive) /* Spin while the thread is still alive */;
+            while (Pipe.RenderThread.IsAlive) /* Spin while the thread is still alive */;
 
-                Bass.BASS_StreamFree(Pipes[i].Handle);
-
-                PipesKillSwitches[i] = false;
-            }
-
-            Bass.BASS_Free();
+            Pipe.KillSwitch = false;
         }
 
         private unsafe void BASSThread(object Pipe)
         {
             // Pipe
-            PipesData TPipe;
+            ShakraPipe TPipe;
 
             // Short
-            BASS_MIDI_EVENT ev;
             MIDIEvent SEvent = new MIDIEvent(0x00000000);
 
             // Long
@@ -275,83 +263,36 @@ namespace ShakraHost
 
             try
             {
-                TPipe = (PipesData)Pipe;
+                TPipe = (ShakraPipe)Pipe;
                 PEvent = Marshal.AllocHGlobal(65536);
 
-                TPipe.SF = new BASS_MIDI_FONT[1];
-                TPipe.SF[0].font = BassMidi.BASS_MIDI_FontInit("test.sf2");
-                TPipe.SF[0].preset = -1;
-                TPipe.SF[0].bank = 0;
-
-                TPipe.Handle = BassMidi.BASS_MIDI_StreamCreate(16, BASSFlag.BASS_SAMPLE_FLOAT, 0);
-                BassMidi.BASS_MIDI_StreamSetFonts(TPipe.Handle, TPipe.SF, TPipe.SF.Length);
-                BassMidi.BASS_MIDI_StreamLoadSamples(TPipe.Handle);
-
-                Bass.BASS_ChannelSetAttribute(TPipe.Handle, BASSAttribute.BASS_ATTRIB_MIDI_VOICES, 1000);
-                Bass.BASS_ChannelPlay(TPipe.Handle, false);
-
-                ShakraDLL.CreatePipe(TPipe.PipeID, 16384);
+                ShakraDLL.CreatePipe(out TPipe.PipeID, 16384);
                 DTimer.Start();
 
-                while (!PipesKillSwitches[TPipe.PipeID])
+                while (!TPipe.KillSwitch)
                 {
-                    PEventS = ShakraDLL.ParseLongEvent(TPipe.PipeID, PEvent);
+                    PEventS = ShakraDLL.ParseLongEvent(PEvent);
                     if (PEventS != 0)
-                    {
-                        byte[] MIDIHDR = new byte[PEventS];
-                        Marshal.Copy(PEvent, MIDIHDR, 0, MIDIHDR.Length);
-                        BassMidi.BASS_MIDI_StreamEvents(TPipe.Handle, BASSMIDIEventMode.BASS_MIDI_EVENTS_RAW, 0, MIDIHDR);
-                    }
+                        KDMAPI.SendDirectLongData(PEvent);
 
-                    Bass.BASS_ChannelUpdate(TPipe.Handle, 0);
                     NtDelayExecution(false, -1);
 
-                    if (!ShakraDLL.PerformBufferCheck(TPipe.PipeID))
+                    if (!ShakraDLL.PerformBufferCheck())
                         continue;
 
-                    int TempWH = ShakraDLL.GetShortWriteHeadPos(TPipe.PipeID);
+                    int TempWH = ShakraDLL.GetWriteHeadPos();
                     do
                     {
-                        SEvent.SetNewEvent(ShakraDLL.ParseShortEvent(TPipe.PipeID));
+                        SEvent.SetNewEvent(ShakraDLL.ParseShortEvent());
                         uint dwParam1 = SEvent.GetWholeEvent();
-                        ShakraDLL.ResetReadHeadsIfNeeded(TPipe.PipeID);
+                        ShakraDLL.ResetReadHeadsIfNeeded(0);
 
-                        switch (SEvent.GetEventType())
-                        {
-                            // Note OFF
-                            case 0x80:
-                                ev = new BASS_MIDI_EVENT(BASSMIDIEvent.MIDI_EVENT_NOTE, SEvent.GetFirstParam(), SEvent.GetChannel(), 0, 0);
-                                break;
-                            // Note ON
-                            case 0x90:
-                                ev = new BASS_MIDI_EVENT(BASSMIDIEvent.MIDI_EVENT_NOTE, SEvent.GetParams(), SEvent.GetChannel(), 0, 0);
-                                break;
-                            // Aftertouch
-                            case 0xA0:
-                                ev = new BASS_MIDI_EVENT(BASSMIDIEvent.MIDI_EVENT_KEYPRES, SEvent.GetParams(), SEvent.GetChannel(), 0, 0);
-                                break;
-                            // Instrument select
-                            case 0xC0:
-                                ev = new BASS_MIDI_EVENT(BASSMIDIEvent.MIDI_EVENT_PROGRAM, SEvent.GetFirstParam(), SEvent.GetChannel(), 0, 0);
-                                break;
-                            // Channel volume
-                            case 0xD0:
-                                ev = new BASS_MIDI_EVENT(BASSMIDIEvent.MIDI_EVENT_CHANPRES, SEvent.GetFirstParam(), SEvent.GetChannel(), 0, 0);
-                                break;
-                            // Control and pitch bends, let BASSMIDI handle the MSB/LSB hell...
-                            case 0xE0:
-                            case 0xB0:
-                                BassMidi.BASS_MIDI_StreamEvents(TPipe.Handle, BASSMIDIEventMode.BASS_MIDI_EVENTS_RAW, 0, (IntPtr)(&dwParam1), 3);
-                                continue;
-                            default:
-                                continue;
-                        }
-
-                        BassMidi.BASS_MIDI_StreamEvents(TPipe.Handle, BASSMIDIEventMode.BASS_MIDI_EVENTS_STRUCT, new BASS_MIDI_EVENT[] { ev });
-                    } while (ShakraDLL.GetShortReadHeadPos(TPipe.PipeID) != TempWH);
+                        // KDMAPI.SendDirectDataNoBuf(dwParam1);
+                        KDMAPI.SendCustomEvent(SEvent.GetEventType(), SEvent.GetChannel(), (uint)SEvent.GetParams());
+                    } while (ShakraDLL.GetReadHeadPos() != TempWH);
                 }
 
-                PipesKillSwitches[TPipe.PipeID] = false;
+                TPipe.KillSwitch = false;
             }
             catch (Exception ex)
             {
